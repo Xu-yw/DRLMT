@@ -35,3 +35,12 @@ Train-Autonomous-Driving-in-Carla/info/documentation/*.pdf
 
 # Logs
 *.log
+
+# Personal / non-public materials (excluded by user choice for Public repo)
+开放课题申报书.docx
+CLAUDE.md
+script_analysis/
+potential_bugs/
+phase1_env_setup.md
+phase2_learning_path.md
+

@@ -1,0 +1,74 @@
+CARLA/
+├── Train-Autonomous-Driving-in-Carla/         # 主训练代码（PPO + VAE）
+│   ├── continuous_driver.py                   # 【入口】连续动作 PPO 训练/测试主程序
+│   ├── discrete_driver.py                     # 【入口】离散动作 DDQN 训练/测试主程序
+│   ├── parameters.py                          # 全局超参数配置（PPO、DDQN、VAE 参数等）
+│   ├── encoder_init.py                        # 加载预训练 VAE Encoder，对图像观测进行编码
+│   ├── requirements.txt                       # pip 依赖列表（future/numpy/pygame/Pillow/poetry）
+│   ├── README.md                              # 项目说明文档
+│   ├── LICENSE.md                             # MIT 许可证
+│   │
+│   ├── carla/                                 # 【关键】CARLA Python API
+│   │   └── carla-0.9.8-py3.7-win-amd64.egg    # 与 CARLA Server 通信用的 egg 包（必须 Python 3.7）
+│   │
+│   ├── poetry/                                # 【关键】poetry 依赖管理（管 PyTorch / Tensorboard）
+│   │   ├── pyproject.toml                     # 声明 torch 1.12.0+cu113、tensorboard 2.10+
+│   │   └── poetry.lock                        # 锁定版本
+│   │
+│   ├── autoencoder/                           # 变分自编码器（VAE）相关代码
+│   │   ├── vae.py                             # VAE 训练脚本（负责训练图像压缩模型）
+│   │   ├── encoder.py                         # VAE 编码器网络定义
+│   │   ├── decoder.py                         # VAE 解码器网络定义
+│   │   ├── reconstructor.py                   # 用训练好的 VAE 重建图像（可视化验证）
+│   │   ├── dataset/
+│   │   │   ├── train/                         # 训练用语义分割图像
+│   │   │   └── test/                          # 测试用语义分割图像
+│   │   ├── model/                             # 【关键】已训练好的 VAE 权重，PPO 训练时加载
+│   │   │   ├── var_encoder_model.pth          # 编码器权重（PPO 用这个）
+│   │   │   ├── decoder_model.pth              # 解码器权重
+│   │   │   ├── var_autoencoder.pth            # 完整 VAE 权重
+│   │   │   ├── current/                       # 当前训练中间快照
+│   │   │   └── previous/                      # 上一版本备份
+│   │   └── reconstructed/                     # 重建后的图像输出目录
+│   │
+│   ├── simulation/                            # CARLA 仿真环境封装
+│   │   ├── connection.py                      # 与 CARLA Server 建立客户端连接
+│   │   ├── environment.py                     # CarlaEnvironment 类，定义状态、动作、奖励、重置逻辑
+│   │   ├── sensors.py                         # 传感器定义（RGB 相机、语义分割相机、碰撞检测等）
+│   │   └── settings.py                        # 仿真参数（HOST/PORT、车辆模型、显示开关等）
+│   │
+│   ├── networks/                              # RL 算法实现
+│   │   ├── on_policy/                         # On-policy 算法
+│   │   │   └── ppo/
+│   │   │       ├── agent.py                   # PPO Agent（Buffer、训练循环、策略更新）
+│   │   │       ├── ppo.py                     # PPO Actor-Critic 网络结构
+│   │   │       └── parameters.py              # PPO 专属超参数
+│   │   └── off_policy/                        # Off-policy 算法（DDQN）
+│   │       ├── replay_buffer.py               # 经验回放缓冲区
+│   │       └── ddqn/
+│   │           ├── agent.py                   # Dueling DQN Agent
+│   │           └── dueling_dqn.py             # Dueling DQN 网络结构
+│   │
+│   ├── info/                                  # 实验结果与可视化
+│   │   ├── diagrams/                          # 架构图（VAE、PPO、MDP 等）
+│   │   ├── plots/                             # TensorBoard 导出的训练曲线（Reward、Loss 等）
+│   │   └── documentation/                     # 论文文档 PDF
+│   │
+│   ├── checkpoints/                           # 训练过程中保存的模型检查点
+│   ├── preTrained_models/                     # 预训练好的 PPO 模型（Town02 / Town07）
+│   ├── runs/                                  # TensorBoard 日志目录
+│   └── logs/                                  # 训练 metrics 文本日志
+│
+├── Clear-Test-Autonomous-Driving-in-Carla/    # 晴天天气测试代码
+├── Rainy-Test-Autonomous-Driving-in-Carla/    # 雨天天气测试代码
+└── Foggy-Test-Autonomous-Driving-in-Carla/    # 雾天天气测试代码
+
+
+==========================================================================
+注释：
+- 跑通流程必须的外部依赖（不在仓库内）：
+    1. CARLA Server 0.9.8（独立软件，~3GB）+ Additional Maps（含 Town02/Town07）
+    2. Python 3.7 (64bit) —— 因为 carla egg 锁定 py3.7
+    3. NVIDIA GPU + CUDA 11.3（PyTorch 1.12.0+cu113）
+- 启动顺序：先开 CarlaUE4.exe 服务端 → 再 python continuous_driver.py
+==========================================================================
