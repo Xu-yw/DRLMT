@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+.ipynb_checkpoints/
+
+# Training artifacts (NEVER commit these — too big)
+Train-Autonomous-Driving-in-Carla/preTrained_models/
+Train-Autonomous-Driving-in-Carla/checkpoints/
+Train-Autonomous-Driving-in-Carla/runs/
+Train-Autonomous-Driving-in-Carla/autoencoder/model/
+Train-Autonomous-Driving-in-Carla/autoencoder/dataset/
+
+# Model files
+*.pth
+*.pt
+*.pkl
+*.pickle
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude/Cursor local
+.claude/
+
+# Paper PDF (optional — comment out if you want to include it)
+DRLMutation A Comprehensive Framework for Mutation.pdf
+Train-Autonomous-Driving-in-Carla/info/documentation/*.pdf
+
+# Logs
+*.log
