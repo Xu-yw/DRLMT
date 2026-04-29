@@ -69,6 +69,8 @@ class CarlaEnvironment():
                 self.total_distance = 250
 
             self.vehicle = self.world.try_spawn_actor(vehicle_bp, transform)
+            if self.vehicle is None:
+                raise RuntimeError(f"Failed to spawn vehicle at {transform.location}")
             self.actor_list.append(self.vehicle)
 
 

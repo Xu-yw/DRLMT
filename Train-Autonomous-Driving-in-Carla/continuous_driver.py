@@ -154,6 +154,8 @@ def runner():
             # while total_number < 10:
             
                 observation = env.reset()
+                if observation is None:
+                    continue
                 observation = encode.process(observation)
                 # print("observation is:", observation)
 
