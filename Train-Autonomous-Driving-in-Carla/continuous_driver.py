@@ -185,7 +185,9 @@ def runner():
                     if observation is None:
                         break
                     observation = encode.process(observation)
-                    
+                    if torch.any(torch.isnan(observation)):
+                        observation = torch.zeros_like(observation)
+
                     # agent.memory.rewards.append(reward)
                     # agent.memory.dones.append(done)
                     

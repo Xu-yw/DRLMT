@@ -97,7 +97,8 @@ class PPOAgent(object):
 
         # Normalizing the rewards
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+        rewards = torch.clamp(rewards, -10, 10)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(self.memory.observation, dim=0)).detach().to(device)
@@ -127,6 +128,7 @@ class PPOAgent(object):
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             self.optimizer.step()
 
         self.old_policy.load_state_dict(self.policy.state_dict())
