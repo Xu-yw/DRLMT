@@ -12,7 +12,7 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
         self.obs_dim = obs_dim
         self.action_dim = action_dim
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         
         # Create our variable for the matrix.
         # Note that I chose 0.2 for stdev arbitrarily.

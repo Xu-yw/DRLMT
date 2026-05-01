@@ -7,7 +7,7 @@ from encoder_init import EncodeState
 from networks.on_policy.ppo.ppo import ActorCritic
 from parameters import  *
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 class Buffer:
     def __init__(self):
