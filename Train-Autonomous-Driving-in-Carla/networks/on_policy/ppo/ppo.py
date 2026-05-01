@@ -12,14 +12,14 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
         self.obs_dim = obs_dim
         self.action_dim = action_dim
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Create our variable for the matrix.
         # Note that I chose 0.2 for stdev arbitrarily.
-        self.cov_var = torch.full((self.action_dim,), action_std_init)
+        self.register_buffer("cov_var", torch.full((self.action_dim,), action_std_init))
 
         # Create the covariance matrix
-        self.cov_mat = torch.diag(self.cov_var).unsqueeze(dim=0)
+        self.register_buffer("cov_mat", torch.diag(self.cov_var).unsqueeze(dim=0))
 
         # actor
         self.actor = nn.Sequential(
@@ -48,7 +48,7 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
     
     def set_action_std(self, new_action_std):
-        self.cov_var = torch.full((self.action_dim,), new_action_std)
+        self.cov_var.fill_(new_action_std)
 
 
     def get_value(self, obs):

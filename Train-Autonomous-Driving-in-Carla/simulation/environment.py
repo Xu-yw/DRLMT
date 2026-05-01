@@ -59,18 +59,29 @@ class CarlaEnvironment():
             vehicle_bp = self.get_vehicle(CAR_NAME)
 
             if self.town == "Town07":
-                transform = self.map.get_spawn_points()[38] #Town7  is 38 
                 self.total_distance = 750
             elif self.town == "Town02":
-                transform = self.map.get_spawn_points()[1] #Town2 is 1
                 self.total_distance = 780
             else:
-                transform = random.choice(self.map.get_spawn_points())
                 self.total_distance = 250
 
-            self.vehicle = self.world.try_spawn_actor(vehicle_bp, transform)
+            spawn_points = self.map.get_spawn_points()
+            preferred_idx = 38 if self.town == "Town07" else (1 if self.town == "Town02" else None)
+            spawn_order = [preferred_idx] if preferred_idx is not None else []
+            others = [j for j in range(len(spawn_points)) if j != preferred_idx]
+            random.shuffle(others)
+            spawn_order.extend(others)
+            self.vehicle = None
+            for _idx in spawn_order:
+                self.vehicle = self.world.try_spawn_actor(vehicle_bp, spawn_points[_idx])
+                if self.vehicle is not None:
+                    if _idx != preferred_idx:
+                        print(f"[SPAWN] Preferred point taken, using spawn point {_idx}")
+                    break
+                time.sleep(0.1)
             if self.vehicle is None:
-                raise RuntimeError(f"Failed to spawn vehicle at {transform.location}")
+                print("[SPAWN] All spawn points failed, returning None")
+                return None
             self.actor_list.append(self.vehicle)
 
 
@@ -158,6 +169,7 @@ class CarlaEnvironment():
             self.remove_sensors()
             if self.display_on:
                 pygame.quit()
+            return None
 
 
 # ----------------------------------------------------------------
@@ -323,6 +335,7 @@ class CarlaEnvironment():
             self.remove_sensors()
             if self.display_on:
                 pygame.quit()
+            return None
 
 
 

@@ -7,7 +7,7 @@ from encoder_init import EncodeState
 from networks.on_policy.ppo.ppo import ActorCritic
 from parameters import  *
 
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Buffer:
     def __init__(self):
@@ -43,12 +43,12 @@ class PPOAgent(object):
 
         self.checkpoint_file_no = 0
         
-        self.policy = ActorCritic(self.obs_dim, self.action_dim, self.action_std)
+        self.policy = ActorCritic(self.obs_dim, self.action_dim, self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
                         {'params': self.policy.actor.parameters(), 'lr': self.lr},
                         {'params': self.policy.critic.parameters(), 'lr': self.lr}])
 
-        self.old_policy = ActorCritic(self.obs_dim, self.action_dim, self.action_std)
+        self.old_policy = ActorCritic(self.obs_dim, self.action_dim, self.action_std).to(device)
         self.old_policy.load_state_dict(self.policy.state_dict())
         self.MseLoss = nn.MSELoss()
 

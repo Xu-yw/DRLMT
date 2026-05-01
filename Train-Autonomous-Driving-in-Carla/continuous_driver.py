@@ -150,7 +150,7 @@ def runner():
             #Training
             # while timestep < total_timesteps:
             t4 = datetime.now()
-            while current_ep_reward < termination_of_rewards:
+            while timestep < total_timesteps:
             # while total_number < 10:
             
                 observation = env.reset()
