@@ -1,3 +1,4 @@
+import os
 import time
 import random
 import numpy as np
@@ -40,6 +41,12 @@ class CarlaEnvironment():
         self.walker_list = list()
         self.create_pedestrians()
 
+        # plan-06: 失效记录器 / 评估模式控制 / 状态轨迹日志
+        self._last_done_reason = None
+        self._eval_spawn_idx = None
+        self._eval_heading_offset_deg = None
+        self._traj_log_path = os.environ.get("STATE_TRAJ_LOG_PATH", None)
+
 
 
     # A reset function for reseting our environment.
@@ -66,17 +73,20 @@ class CarlaEnvironment():
                 self.total_distance = 250
 
             spawn_points = self.map.get_spawn_points()
-            preferred_idx = 38 if self.town == "Town07" else (1 if self.town == "Town02" else None)
-            spawn_order = [preferred_idx] if preferred_idx is not None else []
-            others = [j for j in range(len(spawn_points)) if j != preferred_idx]
-            random.shuffle(others)
-            spawn_order.extend(others)
+            # plan-06 Q10/Q13: 训练真随机起点；评估时由 evaluate_suite.py 设 _eval_spawn_idx
+            if self._eval_spawn_idx is not None:
+                _t = spawn_points[self._eval_spawn_idx]
+                if self._eval_heading_offset_deg is not None:
+                    _t.rotation.yaw += self._eval_heading_offset_deg
+                spawn_order = [(self._eval_spawn_idx, _t)]
+            else:
+                _indices = list(range(len(spawn_points)))
+                random.shuffle(_indices)
+                spawn_order = [(i, spawn_points[i]) for i in _indices]
             self.vehicle = None
-            for _idx in spawn_order:
-                self.vehicle = self.world.try_spawn_actor(vehicle_bp, spawn_points[_idx])
+            for _idx, _transform in spawn_order:
+                self.vehicle = self.world.try_spawn_actor(vehicle_bp, _transform)
                 if self.vehicle is not None:
-                    if _idx != preferred_idx:
-                        print(f"[SPAWN] Preferred point taken, using spawn point {_idx}")
                     break
                 time.sleep(0.1)
             if self.vehicle is None:
@@ -157,6 +167,7 @@ class CarlaEnvironment():
             self.collision_history.clear()
 
             self.episode_start_time = time.time()
+            self._last_done_reason = None
             return [self.image_obs, self.navigation_obs]
 
         except Exception as _e:
@@ -263,15 +274,19 @@ class CarlaEnvironment():
             if len(self.collision_history) != 0:
                 done = True
                 reward = -10
+                self._last_done_reason = "collision"
             elif self.distance_from_center > self.max_distance_from_center:
                 done = True
                 reward = -10
+                self._last_done_reason = "lane_deviation"
             elif self.episode_start_time + 10 < time.time() and self.velocity < 1.0:
                 reward = -10
                 done = True
+                self._last_done_reason = "low_speed_timeout"
             elif self.velocity > self.max_speed:
                 reward = -10
                 done = True
+                self._last_done_reason = "over_speed" 
 
             # Interpolated from 1 when centered to 0 when 3 m from center
             centering_factor = max(1.0 - self.distance_from_center / self.max_distance_from_center, 0.0)
@@ -291,8 +306,10 @@ class CarlaEnvironment():
 
             if self.timesteps >= 7500:
                 done = True
+                self._last_done_reason = "max_steps_reached"
             elif self.current_waypoint_index >= len(self.route_waypoints) - 2:
                 done = True
+                self._last_done_reason = "route_completed"
                 self.fresh_start = True
                 if self.checkpoint_frequency is not None:
                     if self.checkpoint_frequency < self.total_distance//2:
@@ -309,7 +326,17 @@ class CarlaEnvironment():
             normalized_distance_from_center = self.distance_from_center / self.max_distance_from_center
             normalized_angle = abs(self.angle / np.deg2rad(20))
             self.navigation_obs = np.array([self.throttle, self.velocity, normalized_velocity, normalized_distance_from_center, normalized_angle])
-            
+
+            # plan-06: 状态轨迹采样（每 50 step），供 SC 计算
+            if self._traj_log_path is not None and self.timesteps % 50 == 0:
+                try:
+                    with open(self._traj_log_path, "a") as _trf:
+                        _trf.write("{},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(
+                            self.timesteps, self.throttle, self.velocity,
+                            self.previous_steer, self.distance_from_center, self.angle))
+                except Exception:
+                    pass
+
             # Remove everything that has been spawned in the env
             if done:
                 self.center_lane_deviation = self.center_lane_deviation / self.timesteps
@@ -337,6 +364,11 @@ class CarlaEnvironment():
                 pygame.quit()
             return None
 
+
+
+    def get_last_done_reason(self):
+        # plan-06: 返回上一次 done 时的原因
+        return self._last_done_reason
 
 
 # -------------------------------------------------

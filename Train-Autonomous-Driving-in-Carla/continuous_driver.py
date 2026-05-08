@@ -149,8 +149,33 @@ def runner():
         if train:
             #Training
             # while timestep < total_timesteps:
+            # plan-06: reward 收敛终止 + episode_log
+            import csv as _csv
+            REWARD_CONVERGENCE_WINDOW = 50
+            REWARD_CONVERGENCE_THRESHOLD = float(os.environ.get("REWARD_THRESHOLD", "0"))
+            REWARD_CONVERGENCE_HOLD = 10
+            EP_LOG_PATH = os.environ.get("EPISODE_LOG_PATH", None)
+            if EP_LOG_PATH:
+                os.makedirs(os.path.dirname(EP_LOG_PATH), exist_ok=True)
+                if not os.path.exists(EP_LOG_PATH):
+                    with open(EP_LOG_PATH, "w", newline="") as _ef:
+                        _csv.writer(_ef).writerow(["episode","timestep_at_done","total_reward","total_steps","distance_m","done_reason","final_waypoint_idx","route_length","mutation_type","seed"])
+            reward_history = []
+            hold_count = 0
             t4 = datetime.now()
-            while timestep < total_timesteps:
+            while True:
+                if timestep >= total_timesteps:
+                    print(f"[STOP] Reached total_timesteps={total_timesteps}")
+                    break
+                if REWARD_CONVERGENCE_THRESHOLD > 0 and len(reward_history) >= REWARD_CONVERGENCE_WINDOW:
+                    window_avg = sum(reward_history[-REWARD_CONVERGENCE_WINDOW:]) / REWARD_CONVERGENCE_WINDOW
+                    if window_avg >= REWARD_CONVERGENCE_THRESHOLD:
+                        hold_count += 1
+                        if hold_count >= REWARD_CONVERGENCE_HOLD:
+                            print(f"[STOP] reward converged: window_avg={window_avg:.2f} >= threshold={REWARD_CONVERGENCE_THRESHOLD} for {REWARD_CONVERGENCE_HOLD} eps")
+                            break
+                    else:
+                        hold_count = 0
             # while total_number < 10:
             
                 observation = env.reset()
@@ -218,6 +243,17 @@ def runner():
                 distance_covered += info[0]
                 
                 scores.append(current_ep_reward)
+                reward_history.append(current_ep_reward)
+                # plan-06: 写 episode_log (失效模式 + 元数据)
+                if EP_LOG_PATH:
+                    try:
+                        _done_reason = env.get_last_done_reason() if hasattr(env, "get_last_done_reason") else None
+                        _final_idx = getattr(env, "current_waypoint_index", 0)
+                        _route_len = len(env.route_waypoints) if getattr(env, "route_waypoints", None) else 0
+                        with open(EP_LOG_PATH, "a", newline="") as _ef:
+                            _csv.writer(_ef).writerow([episode, timestep, current_ep_reward, t+1, info[0] if info else 0, _done_reason or "unknown", _final_idx, _route_len, os.environ.get("MUTATION_TYPE", "baseline"), args.seed])
+                    except Exception as _le:
+                        print(f"[EP-LOG] write failed: {_le}")
                 # if current_ep_reward > termination_of_rewards:
                 #     total_number += 1
                 
@@ -281,6 +317,14 @@ def runner():
                 
                         
             print("Terminating the run.")
+            flag_path = os.environ.get("TRAINING_DONE_FLAG", "/root/autodl-tmp/runs/training_done.flag")
+            try:
+                os.makedirs(os.path.dirname(flag_path), exist_ok=True)
+                with open(flag_path, "w") as _f:
+                    _f.write(f"timestep={timestep} episode={episode}\n")
+                print(f"[DONE-FLAG] wrote {flag_path}")
+            except Exception as _e:
+                print(f"[DONE-FLAG] failed to write {flag_path}: {_e}")
             sys.exit()
         else:
             #Testing

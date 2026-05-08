@@ -11,7 +11,7 @@ except IndexError:
     print('Couldn\'t import Carla egg properly')
 
 import carla
-from simulation.settings import PORT, TIMEOUT, HOST
+from simulation import settings
 
 class ClientConnection:
     def __init__(self, town):
@@ -22,10 +22,12 @@ class ClientConnection:
         try:
 
             # Connecting to the  Server
-            self.client = carla.Client(HOST, PORT)
-            self.client.set_timeout(TIMEOUT)
+            self.client = carla.Client(settings.HOST, settings.PORT)
+            self.client.set_timeout(settings.TIMEOUT)
             self.world = self.client.load_world(self.town)
-            self.world.set_weather(carla.WeatherParameters.CloudyNoon)
+            self.world.set_weather(carla.WeatherParameters.ClearNoon)
+            # Plan-06 Q8b: 让 20% 行人会过马路（增加"撞行人"失效信号源）
+            self.world.set_pedestrians_cross_factor(0.2)
             return self.client, self.world
 
         except Exception as e:

@@ -10,11 +10,11 @@ Names of the parameters are self-explanatory therefore elimating the use of furt
 
 HOST = "localhost"
 PORT = 2000
-TIMEOUT = 20.0
+TIMEOUT = 60.0
 
 CAR_NAME = 'model3'
 EPISODE_LENGTH = 120
-NUMBER_OF_VEHICLES = 30
+NUMBER_OF_VEHICLES = 15
 NUMBER_OF_PEDESTRIAN = 10
 CONTINUOUS_ACTION = True
 VISUAL_DISPLAY = False

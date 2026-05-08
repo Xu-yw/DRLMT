@@ -34,6 +34,9 @@ TOTAL_TIMESTEPS = 2e6
 ACTION_STD_INIT = 0.2
 TEST_TIMESTEPS = 200
 PPO_LEARNING_RATE = 1e-4  
-PPO_CHECKPOINT_DIR = 'preTrained_models/ppo/'
+import os as _os
+_op = _os.environ.get('MUTATION_TYPE', 'baseline').strip() or 'baseline'
+_seed_env = _os.environ.get('MUTATION_SEED', _os.environ.get('TRAINING_SEED', '0'))
+PPO_CHECKPOINT_DIR = f'preTrained_models/ppo_{_op}_s{_seed_env}/'
 POLICY_CLIP = 0.2
 TERMINATION_OF_REWARD = 2000
