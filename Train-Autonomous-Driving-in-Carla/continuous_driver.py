@@ -267,6 +267,7 @@ def runner():
                 if episode % 10 == 0:
                     agent.learn()
                     agent.chkpt_save()
+                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
                     chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
                     if chkt_file_nums != 0:
                         chkt_file_nums -=1
@@ -297,6 +298,7 @@ def runner():
                 if episode % 100 == 0:
                     
                     agent.save()
+                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
                     chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
                     chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
                     data_obj = {'cumulative_score': cumulative_score, 'episode': episode, 'timestep': timestep, 'action_std_init': action_std_init}
@@ -306,14 +308,14 @@ def runner():
                 if current_ep_reward >= termination_of_rewards:
                     
                     agent.save()
+                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
                     chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
                     chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
                     data_obj = {'cumulative_score': cumulative_score, 'episode': episode, 'timestep': timestep, 'action_std_init': action_std_init}
                     with open(chkpt_file, 'wb') as handle:
                         pickle.dump(data_obj, handle)
                 
-                if flag > 800:
-                    break
+                # plan-06: 去掉 flag > 800 强制终止；统一使用 reward 收敛或 timestep 上限
                 
                         
             print("Terminating the run.")

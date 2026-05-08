@@ -136,11 +136,13 @@ class PPOAgent(object):
 
     
     def save(self):
+        os.makedirs(PPO_CHECKPOINT_DIR+self.town, exist_ok=True)
         self.checkpoint_file_no = len(next(os.walk(PPO_CHECKPOINT_DIR+self.town))[2])
         checkpoint_file = PPO_CHECKPOINT_DIR+self.town+"/ppo_policy_" + str(self.checkpoint_file_no)+"_.pth"
         torch.save(self.old_policy.state_dict(), checkpoint_file)
 
     def chkpt_save(self):
+        os.makedirs(PPO_CHECKPOINT_DIR+self.town, exist_ok=True)
         self.checkpoint_file_no = len(next(os.walk(PPO_CHECKPOINT_DIR+self.town))[2])
         if self.checkpoint_file_no !=0:
             self.checkpoint_file_no -=1
