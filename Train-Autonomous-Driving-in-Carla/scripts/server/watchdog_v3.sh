@@ -18,7 +18,7 @@ DONE_FLAG="${LOG_DIR}/training_done.flag"
 EP_LOG="${EPISODE_LOG_PATH:-${LOG_DIR}/episode_log.csv}"
 TRAIN_LOG="${LOG_DIR}/train.log"
 TRAJ_LOG="${STATE_TRAJ_LOG_PATH:-${LOG_DIR}/state_traj.csv}"
-WD_LOG="${LOG_DIR}/watchdog_v3.log"
+WD_LOG="${LOG_DIR}/watchdog.log"
 CARLA_LOG="${LOG_DIR}/carla_${PORT}.log"
 
 mkdir -p "$LOG_DIR"
