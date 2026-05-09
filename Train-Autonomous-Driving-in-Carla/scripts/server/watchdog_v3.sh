@@ -105,6 +105,14 @@ while true; do
     if checkpoint_exists; then
         load_args=(--load-checkpoint True)
         log "cycle ${cycle}: checkpoint found, resume enabled"
+        trim_script="${REPO_DIR}/scripts/server/trim_episode_log_to_checkpoint.py"
+        if [ -x "$trim_script" ] && [ -f "$EP_LOG" ]; then
+            /root/miniconda3/envs/DRLMutation/bin/python "$trim_script" \
+                --csv "$EP_LOG" \
+                --checkpoint-dir "${REPO_DIR}/checkpoints/PPO/Town07" | while read -r line; do
+                log "cycle ${cycle}: $line"
+            done
+        fi
     else
         log "cycle ${cycle}: no checkpoint found, start from scratch"
     fi
