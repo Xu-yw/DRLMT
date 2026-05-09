@@ -26,6 +26,8 @@ def main():
                    help="rolling-mean window size in episodes (default 50)")
     p.add_argument("--last", type=int, default=10,
                    help="show last N episodes' raw rewards in summary (default 10)")
+    p.add_argument("--budget-tsteps", type=int, default=800000,
+                   help="Plan-06 Phase 1 budget stop in environment timesteps (default 800000)")
     args = p.parse_args()
 
     if not os.path.exists(args.csv):
@@ -78,19 +80,88 @@ def main():
         print("  %-22s  %5.1f%%" % (k, v * 100))
     print("")
 
-    # === Suggest reward threshold ===
-    if len(df) >= args.window * 2:
-        # Compare last window mean to median of all earlier windows
-        recent = last_w["total_reward"].mean()
-        earlier = df.iloc[:-args.window]["total_reward"]
-        earlier_recent = earlier.tail(args.window).mean() if len(earlier) >= args.window else earlier.mean()
-        delta = recent - earlier_recent
-        print("Trend (last %d vs prior %d): %+.2f reward delta" % (args.window, args.window, delta))
-        if abs(delta) < 5.0 and len(df) > 200:
-            suggested = recent * 0.85
-            print("  -> looks like plateau. Suggested REWARD_THRESHOLD = %.0f (85%% of plateau mean)" % suggested)
-        else:
-            print("  -> still climbing/changing, NOT plateau yet")
+    # === Plan-06 Phase 1 stop conditions ===
+    print("Plan-06 Stop Conditions:")
+    total_tsteps = int(df["timestep_at_done"].iloc[-1])
+    stop_a = False
+    stop_b = total_tsteps >= args.budget_tsteps
+    stop_c = False
+    threshold_basis = None
+    threshold_source = None
+
+    if len(df) >= args.window * 3:
+        recent_windows = []
+        for start in [len(df) - args.window * 3, len(df) - args.window * 2, len(df) - args.window]:
+            chunk = df.iloc[start:start + args.window]
+            recent_windows.append({
+                "start_episode": int(chunk["episode"].iloc[0]),
+                "end_episode": int(chunk["episode"].iloc[-1]),
+                "mean": float(chunk["total_reward"].mean()),
+            })
+
+        adj_changes = []
+        for i in range(1, len(recent_windows)):
+            prev = recent_windows[i - 1]["mean"]
+            cur = recent_windows[i]["mean"]
+            denom = abs(prev) if abs(prev) > 1e-9 else 1.0
+            adj_changes.append(abs(cur - prev) / denom)
+        first = recent_windows[0]["mean"]
+        last = recent_windows[-1]["mean"]
+        span_change = abs(last - first) / (abs(first) if abs(first) > 1e-9 else 1.0)
+        stop_a = all(x < 0.10 for x in adj_changes) and span_change < 0.10
+
+        print("  A plateau stop: %s" % ("YES" if stop_a else "NO"))
+        for idx, win in enumerate(recent_windows, 1):
+            print("    W%d ep %d-%d mean=%.2f" % (
+                idx, win["start_episode"], win["end_episode"], win["mean"]
+            ))
+        print("    adjacent changes: %s" % ", ".join("%.2f%%" % (x * 100) for x in adj_changes))
+        print("    W1->W3 change: %.2f%%" % (span_change * 100))
+
+        rolling_full = df["total_reward"].rolling(args.window, min_periods=args.window).mean()
+        best_idx = rolling_full.idxmax()
+        best_mean = float(rolling_full.loc[best_idx])
+        best_ep = int(df.loc[best_idx, "episode"])
+        latest_mean = recent_windows[-1]["mean"]
+        below_best = (best_mean - latest_mean) / (abs(best_mean) if abs(best_mean) > 1e-9 else 1.0)
+        descending = recent_windows[0]["mean"] > recent_windows[1]["mean"] > recent_windows[2]["mean"]
+        windows_after_best = recent_windows[0]["end_episode"] > best_ep
+        stop_c = windows_after_best and descending and below_best > 0.20
+
+        print("  C degradation stop: %s" % ("YES" if stop_c else "NO"))
+        print("    best rolling%d mean=%.2f at episode %d" % (args.window, best_mean, best_ep))
+        print("    latest W3 is %.2f%% below best; descending_3_windows=%s; after_best=%s" % (
+            below_best * 100, str(descending), str(windows_after_best)
+        ))
+
+        if stop_a:
+            threshold_basis = sum(w["mean"] for w in recent_windows) / len(recent_windows)
+            threshold_source = "plateau average of latest 3 windows"
+        elif stop_c:
+            threshold_basis = best_mean
+            threshold_source = "historical best rolling%d" % args.window
+    else:
+        print("  A plateau stop: NO (need at least %d episodes, have %d)" % (args.window * 3, len(df)))
+        print("  C degradation stop: NO (need at least %d episodes, have %d)" % (args.window * 3, len(df)))
+
+    print("  B budget stop: %s" % ("YES" if stop_b else "NO"))
+    print("    total_tsteps=%d / budget_tsteps=%d (%.1f%%)" % (
+        total_tsteps, args.budget_tsteps, total_tsteps * 100.0 / max(1, args.budget_tsteps)
+    ))
+    if stop_b and threshold_basis is None and len(df) >= args.window:
+        rolling_full = df["total_reward"].rolling(args.window, min_periods=args.window).mean()
+        best_idx = rolling_full.idxmax()
+        threshold_basis = float(rolling_full.loc[best_idx])
+        threshold_source = "historical best rolling%d" % args.window
+
+    should_stop = stop_a or stop_b or stop_c
+    print("  Overall: %s" % ("STOP Phase 1" if should_stop else "CONTINUE training"))
+    if threshold_basis is not None:
+        print("  Threshold candidate: %.0f (85%% of %s mean %.2f)" % (
+            threshold_basis * 0.85, threshold_source, threshold_basis
+        ))
+    else:
+        print("  Threshold candidate: not ready")
     print("")
 
     # === Plot ===
