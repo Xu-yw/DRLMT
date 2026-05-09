@@ -46,6 +46,10 @@ class CarlaEnvironment():
         self._eval_spawn_idx = None
         self._eval_heading_offset_deg = None
         self._traj_log_path = os.environ.get("STATE_TRAJ_LOG_PATH", None)
+        self._last_spawn_idx = None
+        self._last_start_x = None
+        self._last_start_y = None
+        self._last_start_yaw = None
 
 
 
@@ -75,7 +79,11 @@ class CarlaEnvironment():
             spawn_points = self.map.get_spawn_points()
             # plan-06 Q10/Q13: 训练真随机起点；评估时由 evaluate_suite.py 设 _eval_spawn_idx
             if self._eval_spawn_idx is not None:
-                _t = spawn_points[self._eval_spawn_idx]
+                _base_t = spawn_points[self._eval_spawn_idx]
+                _t = carla.Transform(
+                    carla.Location(x=_base_t.location.x, y=_base_t.location.y, z=_base_t.location.z),
+                    carla.Rotation(pitch=_base_t.rotation.pitch, yaw=_base_t.rotation.yaw, roll=_base_t.rotation.roll),
+                )
                 if self._eval_heading_offset_deg is not None:
                     _t.rotation.yaw += self._eval_heading_offset_deg
                 spawn_order = [(self._eval_spawn_idx, _t)]
@@ -84,15 +92,25 @@ class CarlaEnvironment():
                 random.shuffle(_indices)
                 spawn_order = [(i, spawn_points[i]) for i in _indices]
             self.vehicle = None
+            selected_spawn_idx = None
+            selected_transform = None
             for _idx, _transform in spawn_order:
                 self.vehicle = self.world.try_spawn_actor(vehicle_bp, _transform)
                 if self.vehicle is not None:
+                    selected_spawn_idx = _idx
+                    selected_transform = _transform
                     break
                 time.sleep(0.1)
             if self.vehicle is None:
                 print("[SPAWN] All spawn points failed, returning None")
                 return None
             self.actor_list.append(self.vehicle)
+            start_transform = selected_transform or self.vehicle.get_transform()
+            start_location = start_transform.location
+            self._last_spawn_idx = selected_spawn_idx
+            self._last_start_x = float(start_location.x)
+            self._last_start_y = float(start_location.y)
+            self._last_start_yaw = float(start_transform.rotation.yaw)
 
 
             # Camera Sensor
@@ -131,6 +149,11 @@ class CarlaEnvironment():
             self.distance_covered = 0.0
 
 
+            # plan-06: training and evaluation both start a fresh route for every episode.
+            # The old checkpoint teleport path made lane_deviation/collision episodes
+            # restart from the same route instead of sampling a new spawn point.
+            self.fresh_start = True
+            self.checkpoint_waypoint_index = 0
             if self.fresh_start:
                 self.current_waypoint_index = 0
                 # Waypoint nearby angle and distance from it
@@ -192,7 +215,6 @@ class CarlaEnvironment():
         try:
 
             self.timesteps+=1
-            self.fresh_start = False
 
             # Velocity of the vehicle
             velocity = self.vehicle.get_velocity()
@@ -256,10 +278,8 @@ class CarlaEnvironment():
             wp_fwd = self.vector(self.current_waypoint.transform.rotation.get_forward_vector())
             self.angle  = self.angle_diff(fwd, wp_fwd)
 
-             # Update checkpoint for training
-            if not self.fresh_start:
-                if self.checkpoint_frequency is not None:
-                    self.checkpoint_waypoint_index = (self.current_waypoint_index // self.checkpoint_frequency) * self.checkpoint_frequency
+             # plan-06: checkpoint teleport is disabled for training random-start semantics.
+            self.checkpoint_waypoint_index = 0
 
             
             # Rewards are given below!
@@ -369,6 +389,14 @@ class CarlaEnvironment():
     def get_last_done_reason(self):
         # plan-06: 返回上一次 done 时的原因
         return self._last_done_reason
+
+    def get_last_spawn_info(self):
+        return {
+            "spawn_idx": self._last_spawn_idx,
+            "start_x": self._last_start_x,
+            "start_y": self._last_start_y,
+            "start_yaw": self._last_start_yaw,
+        }
 
 
 # -------------------------------------------------

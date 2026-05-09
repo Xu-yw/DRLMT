@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
@@ -24,13 +27,25 @@ def main():
     parser.add_argument("--n-cases", type=int, default=500)
     parser.add_argument("--n-spawn-points", type=int, default=120)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--detect-spawn-points", action="store_true",
+                        help="Connect to CARLA and use len(world.get_map().get_spawn_points())")
+    parser.add_argument("--town", default="Town07")
+    parser.add_argument("--port", type=int, default=2000)
     args = parser.parse_args()
 
-    cases = generate_cases(args.n_cases, args.n_spawn_points, args.seed)
+    n_spawn_points = args.n_spawn_points
+    if args.detect_spawn_points:
+        from simulation import settings as sim_settings
+        sim_settings.PORT = args.port
+        from simulation.connection import ClientConnection
+        client, world = ClientConnection(args.town).setup()
+        n_spawn_points = len(world.get_map().get_spawn_points())
+        print(f"[INFO] detected {n_spawn_points} spawn points in {args.town}")
+    cases = generate_cases(args.n_cases, n_spawn_points, args.seed)
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w") as f:
         json.dump(cases, f, indent=2)
-    print(f"[OK] generated {len(cases)} cases to {args.output}")
+    print(f"[OK] generated {len(cases)} cases to {args.output} (n_spawn_points={n_spawn_points}, seed={args.seed})")
     print("First 3:")
     for c in cases[:3]:
         print(c)

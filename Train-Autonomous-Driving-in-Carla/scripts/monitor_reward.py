@@ -80,6 +80,27 @@ def main():
         print("  %-22s  %5.1f%%" % (k, v * 100))
     print("")
 
+    # === Spawn randomization audit ===
+    print("Spawn randomization (last %d episodes):" % len(last_w))
+    if "spawn_idx" in df.columns:
+        spawn_series = last_w["spawn_idx"].dropna()
+        if len(spawn_series) > 0:
+            unique_spawns = int(spawn_series.nunique())
+            print("  unique spawn_idx = %d / %d" % (unique_spawns, len(spawn_series)))
+            top_counts = spawn_series.astype(int).value_counts().head(5)
+            print("  top spawn_idx    = " + ", ".join("%s:%d" % (idx, cnt) for idx, cnt in top_counts.items()))
+        else:
+            print("  spawn_idx column exists but has no values")
+    else:
+        print("  spawn_idx column missing (old log schema)")
+    if "start_x" in df.columns and "start_y" in df.columns:
+        sx = last_w["start_x"].dropna()
+        sy = last_w["start_y"].dropna()
+        if len(sx) > 0 and len(sy) > 0:
+            print("  start_x range    = %.2f .. %.2f" % (sx.min(), sx.max()))
+            print("  start_y range    = %.2f .. %.2f" % (sy.min(), sy.max()))
+    print("")
+
     # === Plan-06 Phase 1 stop conditions ===
     print("Plan-06 Stop Conditions:")
     total_tsteps = int(df["timestep_at_done"].iloc[-1])

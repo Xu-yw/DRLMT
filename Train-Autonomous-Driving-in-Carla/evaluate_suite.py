@@ -1,8 +1,8 @@
 """
 Plan-06 evaluation suite: run a candidate (baseline/mutant) on N=500 test cases.
 
-Suites: sunny (ClearNoon) / rainy (MidRainyNoon) / foggy (Custom_Foggy)
-Fail rule: episode does not reach final waypoint = fail (plan-06 Q14)
+Suites: validation (ClearNoon) / sunny (ClearNoon) / rainy (MidRainyNoon) / foggy (Custom_Foggy)
+Raw fail rule: episode does not reach final waypoint. Phase 6 computes relative_fail.
 Mutant evaluation activates mutation hooks (mutation module exists only on mutation/runtime branch)
 
 CSV schema: see plan-06 04-evaluation-spec.md section 5.1
@@ -33,7 +33,7 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--candidate-name", required=True, help="candidate label")
     p.add_argument("--candidate-ckpt", required=True, help=".pth state_dict path")
-    p.add_argument("--suite", required=True, choices=["sunny", "rainy", "foggy"])
+    p.add_argument("--suite", required=True, choices=["validation", "sunny", "rainy", "foggy"])
     p.add_argument("--weather", required=True,
                    help="CARLA WeatherParameters name (ClearNoon / MidRainyNoon / Custom_Foggy)")
     p.add_argument("--port", type=int, default=2002, help="evaluation port (training uses 2000)")
@@ -105,14 +105,20 @@ def main():
     world.set_weather(weather)
 
     env = CarlaEnvironment(client, world, args.town, checkpoint_frequency=None)
+    n_spawn_points = len(env.map.get_spawn_points())
+    bad_cases = [c for c in cases if int(c.get("spawn_idx", -1)) < 0 or int(c.get("spawn_idx", -1)) >= n_spawn_points]
+    if bad_cases:
+        sample = bad_cases[:5]
+        raise ValueError("test cases contain spawn_idx outside 0..%d: %s" % (n_spawn_points - 1, sample))
+    print("[CFG] Town spawn points=" + str(n_spawn_points))
     encode = EncodeState(LATENT_DIM)
     agent = PPOAgent(args.town, ACTION_STD_INIT)
     load_weights_into_agent(agent, args.candidate_ckpt)
 
     fieldnames = [
         "case_id", "candidate", "suite", "spawn_idx", "heading_offset_deg",
-        "total_reward", "total_steps", "distance_m", "done_reason", "fail",
-        "final_waypoint_idx", "route_length", "wall_time_s", "mutation_type",
+        "total_reward", "total_steps", "distance_m", "done_reason", "raw_fail",
+        "progress_ratio", "final_waypoint_idx", "route_length", "wall_time_s", "mutation_type",
     ]
     t_global = datetime.now()
 
@@ -136,8 +142,8 @@ def main():
                     "suite": args.suite, "spawn_idx": case["spawn_idx"],
                     "heading_offset_deg": round(case["heading_offset_deg"], 4),
                     "total_reward": 0.0, "total_steps": 0, "distance_m": 0.0,
-                    "done_reason": "reset_failure", "fail": 1,
-                    "final_waypoint_idx": 0, "route_length": 0,
+                    "done_reason": "reset_failure", "raw_fail": 1,
+                    "progress_ratio": 0.0, "final_waypoint_idx": 0, "route_length": 0,
                     "wall_time_s": round(time.time() - t0, 2),
                     "mutation_type": args.mutation_type,
                 })
@@ -170,7 +176,8 @@ def main():
 
             final_idx = getattr(env, "current_waypoint_index", 0)
             route_len = len(env.route_waypoints) if getattr(env, "route_waypoints", None) else 0
-            fail = 0 if done_reason == "route_completed" else 1
+            raw_fail = 0 if done_reason == "route_completed" else 1
+            progress_ratio = max(0.0, min(1.0, float(final_idx) / max(1, route_len - 1)))
 
             writer.writerow({
                 "case_id": case["case_id"], "candidate": args.candidate_name,
@@ -178,14 +185,15 @@ def main():
                 "heading_offset_deg": round(case["heading_offset_deg"], 4),
                 "total_reward": round(total_reward, 4), "total_steps": steps,
                 "distance_m": round(info[0], 2) if info else 0.0,
-                "done_reason": done_reason, "fail": fail,
+                "done_reason": done_reason, "raw_fail": raw_fail,
+                "progress_ratio": round(progress_ratio, 6),
                 "final_waypoint_idx": final_idx, "route_length": route_len,
                 "wall_time_s": round(time.time() - t0, 2),
                 "mutation_type": args.mutation_type,
             })
             csv_f.flush()
 
-            if fail:
+            if raw_fail:
                 n_fail += 1
             else:
                 n_pass += 1

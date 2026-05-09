@@ -159,7 +159,7 @@ def runner():
                 os.makedirs(os.path.dirname(EP_LOG_PATH), exist_ok=True)
                 if not os.path.exists(EP_LOG_PATH):
                     with open(EP_LOG_PATH, "w", newline="") as _ef:
-                        _csv.writer(_ef).writerow(["episode","timestep_at_done","total_reward","total_steps","distance_m","done_reason","final_waypoint_idx","route_length","mutation_type","seed"])
+                        _csv.writer(_ef).writerow(["episode","timestep_at_done","total_reward","total_steps","distance_m","done_reason","final_waypoint_idx","route_length","mutation_type","seed","spawn_idx","start_x","start_y","start_yaw","episode_wall_time_s"])
             reward_history = []
             hold_count = 0
             t4 = datetime.now()
@@ -250,8 +250,16 @@ def runner():
                         _done_reason = env.get_last_done_reason() if hasattr(env, "get_last_done_reason") else None
                         _final_idx = getattr(env, "current_waypoint_index", 0)
                         _route_len = len(env.route_waypoints) if getattr(env, "route_waypoints", None) else 0
+                        _spawn = env.get_last_spawn_info() if hasattr(env, "get_last_spawn_info") else {}
                         with open(EP_LOG_PATH, "a", newline="") as _ef:
-                            _csv.writer(_ef).writerow([episode, timestep, current_ep_reward, t+1, info[0] if info else 0, _done_reason or "unknown", _final_idx, _route_len, os.environ.get("MUTATION_TYPE", "baseline"), args.seed])
+                            _csv.writer(_ef).writerow([
+                                episode, timestep, current_ep_reward, t+1, info[0] if info else 0,
+                                _done_reason or "unknown", _final_idx, _route_len,
+                                os.environ.get("MUTATION_TYPE", "baseline"), args.seed,
+                                _spawn.get("spawn_idx"), _spawn.get("start_x"),
+                                _spawn.get("start_y"), _spawn.get("start_yaw"),
+                                round(abs(t3.total_seconds()), 4),
+                            ])
                     except Exception as _le:
                         print(f"[EP-LOG] write failed: {_le}")
                 # if current_ep_reward > termination_of_rewards:
