@@ -216,7 +216,7 @@ class CarlaEnvironment():
 
             self.timesteps+=1
 
-            # Velocity of the vehicle
+            # Previous velocity is only used for the legacy discrete-action throttle heuristic.
             velocity = self.vehicle.get_velocity()
             self.velocity = np.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2) * 3.6
             
@@ -237,6 +237,15 @@ class CarlaEnvironment():
                     self.vehicle.apply_control(carla.VehicleControl(steer=self.previous_steer*0.9 + steer*0.1))
                 self.previous_steer = steer
                 self.throttle = 1.0
+
+            # Let the applied control affect the simulator before measuring reward/next_obs.
+            try:
+                self.world.wait_for_tick(1.0)
+            except Exception:
+                time.sleep(0.05)
+
+            velocity = self.vehicle.get_velocity()
+            self.velocity = np.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2) * 3.6
             
             # Traffic Light state
             if self.vehicle.is_at_traffic_light():
@@ -274,7 +283,7 @@ class CarlaEnvironment():
             self.center_lane_deviation += self.distance_from_center
 
             # Get angle difference between closest waypoint and vehicle forward vector
-            fwd    = self.vector(self.vehicle.get_velocity())
+            fwd    = self.vector(self.vehicle.get_transform().rotation.get_forward_vector())
             wp_fwd = self.vector(self.current_waypoint.transform.rotation.get_forward_vector())
             self.angle  = self.angle_diff(fwd, wp_fwd)
 

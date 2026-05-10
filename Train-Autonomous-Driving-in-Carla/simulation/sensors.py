@@ -40,8 +40,8 @@ class CameraSensor():
         image.convert(carla.ColorConverter.CityScapesPalette)
         placeholder = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
         placeholder1 = placeholder.reshape((image.width, image.height, 4))
-        target = placeholder1[:, :, :3]
-        self.front_camera.append(target)#/255.0)
+        target = placeholder1[:, :, :3].astype(np.float32) / 255.0
+        self.front_camera.append(target)
 
 
 # ---------------------------------------------------------------------|

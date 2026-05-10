@@ -51,7 +51,10 @@ class VariationalEncoder(nn.Module):
         x = self.linear(x)
         mu =  self.mu(x)
         sigma = torch.exp(torch.clamp(self.sigma(x), -10, 10))
-        z = mu + sigma*self.N.sample(mu.shape)
+        if self.training:
+            z = mu + sigma*self.N.sample(mu.shape)
+        else:
+            z = mu
         self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
         return z
 
