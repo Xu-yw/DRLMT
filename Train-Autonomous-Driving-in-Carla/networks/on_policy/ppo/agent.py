@@ -106,9 +106,8 @@ class PPOAgent(object):
             discounted_reward = reward + (gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
-        # Normalizing the rewards
+        # Normalize returns without clipping; high-progress episodes must keep their advantage signal.
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = torch.clamp(rewards, -10, 10)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor

@@ -264,6 +264,7 @@ class CarlaEnvironment():
 
             #transform = self.vehicle.get_transform()
             # Keep track of closest waypoint on the route
+            previous_waypoint_index = self.current_waypoint_index
             waypoint_index = self.current_waypoint_index
             for _ in range(len(self.route_waypoints)):
                 # Check if we passed the next waypoint along the route
@@ -276,6 +277,7 @@ class CarlaEnvironment():
                     break
 
             self.current_waypoint_index = waypoint_index
+            progress_delta = max(self.current_waypoint_index - previous_waypoint_index, 0)
             # Calculate deviation from center of the lane
             self.current_waypoint = self.route_waypoints[ self.current_waypoint_index    % len(self.route_waypoints)]
             self.next_waypoint = self.route_waypoints[(self.current_waypoint_index+1) % len(self.route_waypoints)]
@@ -332,6 +334,10 @@ class CarlaEnvironment():
                         reward = 1.0 * centering_factor * angle_factor 
                 else:
                     reward = 1.0 * centering_factor * angle_factor
+
+                reward += 0.05 * progress_delta
+                if self.distance_from_center > 1.5:
+                    reward -= 0.2 * ((self.distance_from_center - 1.5) / 1.5)
 
             if self.timesteps >= 7500:
                 done = True
