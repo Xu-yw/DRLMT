@@ -50,6 +50,13 @@ class CarlaEnvironment():
         self._last_start_x = None
         self._last_start_y = None
         self._last_start_yaw = None
+        self.action_smoothing = max(0.0, min(float(os.environ.get("ACTION_SMOOTHING", "0.8")), 0.95))
+        self.raw_steer_action = 0.0
+        self.raw_throttle_action = 0.0
+        self.clipped_steer_action = 0.0
+        self.clipped_throttle_action = 0.0
+        self.applied_steer = 0.0
+        self.applied_throttle = 0.0
 
 
 
@@ -142,6 +149,12 @@ class CarlaEnvironment():
             self.max_distance_from_center = 3
             self.throttle = float(0.0)
             self.previous_steer = float(0.0)
+            self.raw_steer_action = 0.0
+            self.raw_throttle_action = 0.0
+            self.clipped_steer_action = 0.0
+            self.clipped_throttle_action = 0.0
+            self.applied_steer = 0.0
+            self.applied_throttle = 0.0
             self.velocity = float(0.0)
             self.distance_from_center = float(0.0)
             self.angle = float(0.0)
@@ -221,22 +234,33 @@ class CarlaEnvironment():
             self.velocity = np.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2) * 3.6
             
             # Action fron action space for contolling the vehicle with a discrete action
+            smooth = self.action_smoothing
+            new_weight = 1.0 - smooth
             if self.continous_action_space:
-                steer = float(action_idx[0])
-                steer = max(min(steer, 1.0), -1.0)
-                throttle = float((action_idx[1] + 1.0)/2)
-                throttle = max(min(throttle, 1.0), 0.0)
-                self.vehicle.apply_control(carla.VehicleControl(steer=self.previous_steer*0.9 + steer*0.1, throttle=self.throttle*0.9 + throttle*0.1))
-                self.previous_steer = steer
-                self.throttle = throttle
+                self.raw_steer_action = float(action_idx[0])
+                self.raw_throttle_action = float(action_idx[1])
+                steer = max(min(self.raw_steer_action, 1.0), -1.0)
+                throttle_action = max(min(self.raw_throttle_action, 1.0), -1.0)
+                throttle = float((throttle_action + 1.0)/2)
+                self.clipped_steer_action = steer
+                self.clipped_throttle_action = throttle_action
+                self.applied_steer = self.applied_steer * smooth + steer * new_weight
+                self.applied_throttle = self.applied_throttle * smooth + throttle * new_weight
+                self.vehicle.apply_control(carla.VehicleControl(steer=self.applied_steer, throttle=self.applied_throttle))
+                self.previous_steer = self.applied_steer
+                self.throttle = self.applied_throttle
             else:
                 steer = self.action_space[action_idx]
-                if self.velocity < 20.0:
-                    self.vehicle.apply_control(carla.VehicleControl(steer=self.previous_steer*0.9 + steer*0.1, throttle=1.0))
-                else:
-                    self.vehicle.apply_control(carla.VehicleControl(steer=self.previous_steer*0.9 + steer*0.1))
-                self.previous_steer = steer
-                self.throttle = 1.0
+                self.raw_steer_action = float(steer)
+                self.raw_throttle_action = 1.0
+                self.clipped_steer_action = float(steer)
+                self.clipped_throttle_action = 1.0
+                target_throttle = 1.0 if self.velocity < 20.0 else 0.0
+                self.applied_steer = self.applied_steer * smooth + steer * new_weight
+                self.applied_throttle = self.applied_throttle * smooth + target_throttle * new_weight
+                self.vehicle.apply_control(carla.VehicleControl(steer=self.applied_steer, throttle=self.applied_throttle))
+                self.previous_steer = self.applied_steer
+                self.throttle = self.applied_throttle
 
             # Let the applied control affect the simulator before measuring reward/next_obs.
             try:
@@ -336,6 +360,7 @@ class CarlaEnvironment():
                     reward = 1.0 * centering_factor * angle_factor
 
                 reward += 0.05 * progress_delta
+                reward -= 0.05 * min(abs(self.angle / np.deg2rad(20)), 2.0)
                 if self.distance_from_center > 1.5:
                     reward -= 0.2 * ((self.distance_from_center - 1.5) / 1.5)
 
@@ -366,9 +391,12 @@ class CarlaEnvironment():
             if self._traj_log_path is not None and self.timesteps % 50 == 0:
                 try:
                     with open(self._traj_log_path, "a") as _trf:
-                        _trf.write("{},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(
+                        _trf.write("{},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(
                             self.timesteps, self.throttle, self.velocity,
-                            self.previous_steer, self.distance_from_center, self.angle))
+                            self.previous_steer, self.distance_from_center, self.angle,
+                            self.raw_steer_action, self.raw_throttle_action,
+                            self.clipped_steer_action, self.clipped_throttle_action,
+                            self.applied_steer, self.applied_throttle))
                 except Exception:
                     pass
 

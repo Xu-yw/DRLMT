@@ -66,7 +66,8 @@ class ActorCritic(nn.Module):
         # Create our Multivariate Normal Distribution
         dist = MultivariateNormal(mean, self.cov_mat)
         # Sample an action from the distribution and get its log prob
-        action = dist.sample()
+        raw_action = dist.sample()
+        action = torch.clamp(raw_action, -1.0, 1.0)
         log_prob = dist.log_prob(action)
         
         # Return the sampled action and the log prob of that action
