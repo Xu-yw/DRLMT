@@ -60,6 +60,7 @@ def runner():
     total_timesteps = args.total_timesteps
     action_std_init = args.action_std_init
     termination_of_rewards = args.termination_of_reward
+    meta_checkpoint_dir = os.environ.get("PPO_META_CHECKPOINT_DIR", f"checkpoints/PPO/{town}")
 
     try:
         if exp_name == 'ppo':
@@ -128,8 +129,8 @@ def runner():
         # total_number = 0
         
         if checkpoint_load:
-            chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2]) - 1
-            chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
+            chkt_file_nums = len(next(os.walk(meta_checkpoint_dir))[2]) - 1
+            chkpt_file = meta_checkpoint_dir+'/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
             with open(chkpt_file, 'rb') as f:
                 data = pickle.load(f)
                 episode = data['episode']
@@ -207,6 +208,7 @@ def runner():
 
 
                     observation, reward, done, info = env.step(action)
+                    agent.record_transition(reward, done)
 
 
                     if observation is None:
@@ -275,11 +277,11 @@ def runner():
                 if episode % 10 == 0:
                     agent.learn()
                     agent.chkpt_save()
-                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
-                    chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
+                    os.makedirs(meta_checkpoint_dir, exist_ok=True)
+                    chkt_file_nums = len(next(os.walk(meta_checkpoint_dir))[2])
                     if chkt_file_nums != 0:
                         chkt_file_nums -=1
-                    chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
+                    chkpt_file = meta_checkpoint_dir+'/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
                     data_obj = {'cumulative_score': cumulative_score, 'episode': episode, 'timestep': timestep, 'action_std_init': action_std_init}
                     with open(chkpt_file, 'wb') as handle:
                         pickle.dump(data_obj, handle)
@@ -306,9 +308,9 @@ def runner():
                 if episode % 100 == 0:
                     
                     agent.save()
-                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
-                    chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
-                    chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
+                    os.makedirs(meta_checkpoint_dir, exist_ok=True)
+                    chkt_file_nums = len(next(os.walk(meta_checkpoint_dir))[2])
+                    chkpt_file = meta_checkpoint_dir+'/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
                     data_obj = {'cumulative_score': cumulative_score, 'episode': episode, 'timestep': timestep, 'action_std_init': action_std_init}
                     with open(chkpt_file, 'wb') as handle:
                         pickle.dump(data_obj, handle)
@@ -316,9 +318,9 @@ def runner():
                 if current_ep_reward >= termination_of_rewards:
                     
                     agent.save()
-                    os.makedirs(f'checkpoints/PPO/{town}', exist_ok=True)
-                    chkt_file_nums = len(next(os.walk(f'checkpoints/PPO/{town}'))[2])
-                    chkpt_file = f'checkpoints/PPO/{town}/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
+                    os.makedirs(meta_checkpoint_dir, exist_ok=True)
+                    chkt_file_nums = len(next(os.walk(meta_checkpoint_dir))[2])
+                    chkpt_file = meta_checkpoint_dir+'/checkpoint_ppo_'+str(chkt_file_nums)+'.pickle'
                     data_obj = {'cumulative_score': cumulative_score, 'episode': episode, 'timestep': timestep, 'action_std_init': action_std_init}
                     with open(chkpt_file, 'wb') as handle:
                         pickle.dump(data_obj, handle)

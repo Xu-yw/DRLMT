@@ -183,7 +183,7 @@ class CarlaEnvironment():
                 self.vehicle.set_transform(transform)
                 self.current_waypoint_index = self.checkpoint_waypoint_index
 
-            self.navigation_obs = np.array([self.throttle, self.velocity, self.previous_steer, self.distance_from_center, self.angle])
+            self.navigation_obs = np.array([self.throttle, self.velocity / self.target_speed, self.previous_steer, self.distance_from_center / self.max_distance_from_center, self.angle / np.deg2rad(20)])
 
                         
             time.sleep(0.5)
@@ -344,8 +344,8 @@ class CarlaEnvironment():
             self.image_obs = self.camera_obj.front_camera.pop(-1)
             normalized_velocity = self.velocity/self.target_speed
             normalized_distance_from_center = self.distance_from_center / self.max_distance_from_center
-            normalized_angle = abs(self.angle / np.deg2rad(20))
-            self.navigation_obs = np.array([self.throttle, self.velocity, normalized_velocity, normalized_distance_from_center, normalized_angle])
+            normalized_angle = self.angle / np.deg2rad(20)
+            self.navigation_obs = np.array([self.throttle, normalized_velocity, self.previous_steer, normalized_distance_from_center, normalized_angle])
 
             # plan-06: 状态轨迹采样（每 50 step），供 SC 计算
             if self._traj_log_path is not None and self.timesteps % 50 == 0:

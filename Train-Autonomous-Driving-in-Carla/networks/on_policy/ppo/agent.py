@@ -53,7 +53,7 @@ class PPOAgent(object):
         self.MseLoss = nn.MSELoss()
 
 
-    def get_action(self, obs, flag, reward, done, train):
+    def get_action(self, obs, flag=None, reward=None, done=None, train=True):
 
         with torch.no_grad():
             if isinstance(obs, np.ndarray):
@@ -61,13 +61,24 @@ class PPOAgent(object):
             action, logprob = self.old_policy.get_action_and_log_prob(obs.to(device))
 
         if train:
+            # Store state/action/logprob now; reward/done belongs to env.step(action).
             self.memory.observation.append(obs.to(device))
             self.memory.actions.append(action)
-            self.memory.rewards.append(reward)
-            self.memory.dones.append(done)
             self.memory.log_probs.append(logprob)
 
         return action.detach().cpu().numpy().flatten()
+
+    def record_transition(self, reward, done):
+        self.memory.rewards.append(reward)
+        self.memory.dones.append(done)
+
+    def discard_last_action(self):
+        if self.memory.observation:
+            self.memory.observation.pop()
+        if self.memory.actions:
+            self.memory.actions.pop()
+        if self.memory.log_probs:
+            self.memory.log_probs.pop()
     
     def set_action_std(self, new_action_std):
         self.action_std = new_action_std
