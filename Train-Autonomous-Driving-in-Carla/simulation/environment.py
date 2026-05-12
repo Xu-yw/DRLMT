@@ -52,6 +52,14 @@ class CarlaEnvironment():
         self._last_start_yaw = None
 
 
+    def _wait_for_camera_frame(self, timeout_s=5.0):
+        start = time.time()
+        while len(self.camera_obj.front_camera) == 0:
+            if time.time() - start > timeout_s:
+                return False
+            time.sleep(0.0001)
+        return True
+
 
     # A reset function for reseting our environment.
     def reset(self):
@@ -115,8 +123,8 @@ class CarlaEnvironment():
 
             # Camera Sensor
             self.camera_obj = CameraSensor(self.vehicle)
-            while(len(self.camera_obj.front_camera) == 0):
-                time.sleep(0.0001)
+            if not self._wait_for_camera_frame():
+                raise RuntimeError("camera frame timeout during reset")
             self.image_obs = self.camera_obj.front_camera.pop(-1)
             self.sensor_list.append(self.camera_obj.sensor)
 
@@ -353,8 +361,8 @@ class CarlaEnvironment():
                         self.checkpoint_frequency = None
                         self.checkpoint_waypoint_index = 0
 
-            while(len(self.camera_obj.front_camera) == 0):
-                time.sleep(0.0001)
+            if not self._wait_for_camera_frame():
+                raise RuntimeError("camera frame timeout during step")
 
             self.image_obs = self.camera_obj.front_camera.pop(-1)
             normalized_velocity = self.velocity/self.target_speed
@@ -579,4 +587,3 @@ class CarlaEnvironment():
         self.front_camera = None
         self.collision_history = None
         self.wrong_maneuver = None
-

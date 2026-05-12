@@ -1,3 +1,5 @@
+import os
+
 '''
 All the parameters used in the Simulation has been documented here.
 
@@ -14,12 +16,11 @@ TIMEOUT = 60.0
 
 CAR_NAME = 'model3'
 EPISODE_LENGTH = 120
-NUMBER_OF_VEHICLES = 15
-NUMBER_OF_PEDESTRIAN = 10
+NUMBER_OF_VEHICLES = int(os.environ.get("NUMBER_OF_VEHICLES", "15"))
+NUMBER_OF_PEDESTRIAN = int(os.environ.get("NUMBER_OF_PEDESTRIAN", "10"))
 CONTINUOUS_ACTION = True
 VISUAL_DISPLAY = False
 
 
 RGB_CAMERA = 'sensor.camera.rgb'
 SSC_CAMERA = 'sensor.camera.semantic_segmentation'
-

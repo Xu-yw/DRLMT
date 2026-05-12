@@ -3,7 +3,7 @@
 # Usage: watchdog_vec2.sh <run_id> <seed> [reward_threshold]
 # Env overrides:
 #   PORTS, TOTAL_TIMESTEPS, MAX_EPISODES, CHECK_INTERVAL, STALE_SECONDS,
-#   CARLA_STARTUP_SECONDS, STEP_TIMEOUT, LOG_DIR
+#   CARLA_STARTUP_SECONDS, STEP_TIMEOUT, LOG_DIR, NUMBER_OF_PEDESTRIAN
 set -u
 
 RUN_ID="${1:-baseline_vec2_s0}"
@@ -16,6 +16,7 @@ CHECK_INTERVAL="${CHECK_INTERVAL:-20}"
 STALE_SECONDS="${STALE_SECONDS:-240}"
 CARLA_STARTUP_SECONDS="${CARLA_STARTUP_SECONDS:-60}"
 STEP_TIMEOUT="${STEP_TIMEOUT:-120}"
+NUMBER_OF_PEDESTRIAN="${NUMBER_OF_PEDESTRIAN:-10}"
 
 REPO_DIR="/root/autodl-tmp/DRLMT/Train-Autonomous-Driving-in-Carla"
 LOG_DIR="${LOG_DIR:-/root/autodl-tmp/runs/${RUN_ID}/seed${SEED}}"
@@ -100,7 +101,7 @@ start_carla_all() {
             continue
         fi
         log "starting CARLA on port ${port}"
-        CARLA_LOG="${LOG_DIR}/carla_${port}.log" bash /root/autodl-tmp/start_carla.sh "$port" >> "$WD_LOG" 2>&1 &
+        CARLA_LOG="${LOG_DIR}/carla_${port}.log" bash "${REPO_DIR}/scripts/server/start_carla.sh" "$port" >> "$WD_LOG" 2>&1 &
     done
 
     sleep "$CARLA_STARTUP_SECONDS"
@@ -127,7 +128,7 @@ trim_episode_log_to_checkpoint() {
 }
 
 cycle=0
-log "watchdog started: run_id=${RUN_ID} seed=${SEED} ports=${PORTS} total_timesteps=${TOTAL_TIMESTEPS} max_episodes=${MAX_EPISODES} stale=${STALE_SECONDS}s step_timeout=${STEP_TIMEOUT}s"
+log "watchdog started: run_id=${RUN_ID} seed=${SEED} ports=${PORTS} total_timesteps=${TOTAL_TIMESTEPS} max_episodes=${MAX_EPISODES} stale=${STALE_SECONDS}s step_timeout=${STEP_TIMEOUT}s pedestrians=${NUMBER_OF_PEDESTRIAN}"
 
 while true; do
     cycle=$((cycle + 1))
@@ -169,6 +170,7 @@ while true; do
         TENSORBOARD_RUN_DIR="${LOG_DIR}/tensorboard" \
         MAX_EPISODES="$MAX_EPISODES" \
         STEP_TIMEOUT="$STEP_TIMEOUT" \
+        NUMBER_OF_PEDESTRIAN="$NUMBER_OF_PEDESTRIAN" \
         /root/miniconda3/envs/DRLMutation/bin/python continuous_driver_vec.py \
             --exp-name ppo \
             --town Town07 \
