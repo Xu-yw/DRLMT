@@ -17,6 +17,7 @@ class Buffer:
         self.log_probs = []     
         self.rewards = []         
         self.dones = []
+        self.env_ids = []
 
     def clear(self):
         del self.observation[:]    
@@ -24,6 +25,7 @@ class Buffer:
         del self.log_probs[:]      
         del self.rewards[:]
         del self.dones[:]
+        del self.env_ids[:]
 
 class PPOAgent(object):
     def __init__(self, town, action_std_init=0.4):
@@ -53,7 +55,7 @@ class PPOAgent(object):
         self.MseLoss = nn.MSELoss()
 
 
-    def get_action(self, obs, flag=None, reward=None, done=None, train=True):
+    def get_action(self, obs, flag=None, reward=None, done=None, train=True, env_id=None):
 
         with torch.no_grad():
             if isinstance(obs, np.ndarray):
@@ -65,6 +67,7 @@ class PPOAgent(object):
             self.memory.observation.append(obs.to(device))
             self.memory.actions.append(action)
             self.memory.log_probs.append(logprob)
+            self.memory.env_ids.append(env_id)
 
         return action.detach().cpu().numpy().flatten()
 
@@ -79,6 +82,8 @@ class PPOAgent(object):
             self.memory.actions.pop()
         if self.memory.log_probs:
             self.memory.log_probs.pop()
+        if self.memory.env_ids:
+            self.memory.env_ids.pop()
     
     def set_action_std(self, new_action_std):
         self.action_std = new_action_std
@@ -96,18 +101,26 @@ class PPOAgent(object):
 
     def learn(self):
 
-        # Monte Carlo estimate of returns
-        rewards = []
-        discounted_reward = 0
+        # Monte Carlo estimate of returns. In vectorized training, samples from
+        # multiple CARLA servers are interleaved, so returns must reset per env.
+        returns = [0.0] * len(self.memory.rewards)
+        discounted_by_env = {}
         gamma = GAMMA
-        for reward, is_terminal in zip(reversed(self.memory.rewards), reversed(self.memory.dones)):
+        env_ids = self.memory.env_ids
+        if len(env_ids) != len(self.memory.rewards):
+            env_ids = [None] * len(self.memory.rewards)
+        for idx in range(len(self.memory.rewards) - 1, -1, -1):
+            reward = self.memory.rewards[idx]
+            is_terminal = self.memory.dones[idx]
+            env_id = env_ids[idx]
             if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
+                discounted_by_env[env_id] = 0.0
+            discounted_reward = reward + (gamma * discounted_by_env.get(env_id, 0.0))
+            returns[idx] = discounted_reward
+            discounted_by_env[env_id] = discounted_reward
 
         # Normalize returns without clipping; high-progress episodes must keep their advantage signal.
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = torch.tensor(returns, dtype=torch.float32).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
         # convert list to tensor
@@ -164,4 +177,3 @@ class PPOAgent(object):
         checkpoint_file = PPO_CHECKPOINT_DIR+self.town+"/ppo_policy_" + str(self.checkpoint_file_no)+"_.pth"
         self.old_policy.load_state_dict(torch.load(checkpoint_file))
         self.policy.load_state_dict(torch.load(checkpoint_file))
-            
