@@ -100,6 +100,25 @@ class PPOAgent(object):
 
 
     def learn(self):
+        lengths = {
+            "observation": len(self.memory.observation),
+            "actions": len(self.memory.actions),
+            "log_probs": len(self.memory.log_probs),
+            "rewards": len(self.memory.rewards),
+            "dones": len(self.memory.dones),
+            "env_ids": len(self.memory.env_ids),
+        }
+        if len(set(lengths.values())) != 1:
+            raise RuntimeError("PPO buffer length mismatch: {}".format(lengths))
+        if lengths["rewards"] == 0:
+            raise RuntimeError("PPO learn called with empty buffer")
+        unfinished_envs = []
+        for env_id in set(self.memory.env_ids):
+            last_idx = max(i for i, cur_env in enumerate(self.memory.env_ids) if cur_env == env_id)
+            if not self.memory.dones[last_idx]:
+                unfinished_envs.append(env_id)
+        if unfinished_envs:
+            raise RuntimeError("PPO learn called with unfinished env trajectories: {}".format(unfinished_envs))
 
         # Monte Carlo estimate of returns. In vectorized training, samples from
         # multiple CARLA servers are interleaved, so returns must reset per env.

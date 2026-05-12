@@ -187,6 +187,9 @@ def runner():
     current_ep_reward = [0.0] * len(envs)
     current_ep_steps = [0] * len(envs)
     current_ep_start = [datetime.now()] * len(envs)
+    pending_learn = False
+    pending_stop = False
+    pending_save = False
 
     def reset_env(env_id):
         observation = envs[env_id].reset()
@@ -204,7 +207,9 @@ def runner():
 
     t0 = datetime.now()
     with ThreadPoolExecutor(max_workers=len(envs)) as executor:
-        while timestep < total_timesteps and (args.max_episodes <= 0 or episode < args.max_episodes):
+        while timestep < total_timesteps:
+            if args.max_episodes > 0 and episode >= args.max_episodes:
+                pending_stop = True
             if reward_threshold > 0 and len(reward_history) >= reward_window:
                 window_avg = sum(reward_history[-reward_window:]) / reward_window
                 if window_avg >= reward_threshold:
@@ -217,11 +222,26 @@ def runner():
 
             active = []
             for env_id in range(len(envs)):
-                if observations[env_id] is None:
+                if observations[env_id] is None and not pending_learn and not pending_stop:
                     reset_env(env_id)
                 if observations[env_id] is not None:
                     active.append(env_id)
+            if pending_learn and not active:
+                print(f"[BARRIER-LEARN] episode={episode} timestep={timestep}", flush=True)
+                agent.learn()
+                agent.chkpt_save()
+                _save_meta_checkpoint(meta_checkpoint_dir, episode, timestep, cumulative_score, action_std_init)
+                pending_learn = False
+                if pending_save:
+                    agent.save()
+                    _save_meta_checkpoint(meta_checkpoint_dir, episode, timestep, cumulative_score, action_std_init)
+                    pending_save = False
+                if pending_stop:
+                    break
+                continue
             if not active:
+                if pending_stop:
+                    break
                 time.sleep(1.0)
                 continue
 
@@ -238,7 +258,6 @@ def runner():
                 for env_id in active
             }
 
-            learn_due = False
             save_due = False
             latest_cumulative_score = cumulative_score
             for env_id in active:
@@ -317,7 +336,9 @@ def runner():
                     )
 
                     if episode % 10 == 0:
-                        learn_due = True
+                        pending_learn = True
+                    if args.max_episodes > 0 and episode >= args.max_episodes:
+                        pending_stop = True
 
                     if episode % 5 == 0:
                         writer.add_scalar("Episodic Reward/episode", scores[-1], episode)
@@ -345,17 +366,12 @@ def runner():
                         next_observation = torch.zeros_like(next_observation)
                     observations[env_id] = next_observation
 
-            # Learn only after every env in the current vectorized step has
-            # recorded its reward, otherwise the PPO buffer can have one more
-            # state/action than reward/done.
-            if learn_due:
-                agent.learn()
-                agent.chkpt_save()
-                _save_meta_checkpoint(meta_checkpoint_dir, episode, timestep, latest_cumulative_score, action_std_init)
-
             if save_due:
-                agent.save()
-                _save_meta_checkpoint(meta_checkpoint_dir, episode, timestep, latest_cumulative_score, action_std_init)
+                if pending_learn:
+                    pending_save = True
+                else:
+                    agent.save()
+                    _save_meta_checkpoint(meta_checkpoint_dir, episode, timestep, latest_cumulative_score, action_std_init)
 
     for env in envs:
         try:
