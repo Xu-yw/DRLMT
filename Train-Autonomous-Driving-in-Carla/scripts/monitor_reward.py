@@ -26,8 +26,8 @@ def main():
                    help="rolling-mean window size in episodes (default 50)")
     p.add_argument("--last", type=int, default=10,
                    help="show last N episodes' raw rewards in summary (default 10)")
-    p.add_argument("--budget-tsteps", type=int, default=800000,
-                   help="Plan-06 Phase 1 budget stop in environment timesteps (default 800000)")
+    p.add_argument("--budget-tsteps", type=int, default=1000000,
+                   help="Plan-06 Phase 1 budget stop in environment timesteps (default 1000000)")
     args = p.parse_args()
 
     if not os.path.exists(args.csv):
