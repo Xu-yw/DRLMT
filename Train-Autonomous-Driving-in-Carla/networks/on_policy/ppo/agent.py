@@ -54,6 +54,7 @@ class PPOAgent(object):
 
 
     def get_action(self, obs, flag=None, reward=None, done=None, train=True, deterministic=False):
+        assert not (train and deterministic), "deterministic eval is incompatible with train=True (would push 0-d logprob to memory)"
 
         with torch.no_grad():
             if isinstance(obs, np.ndarray):
