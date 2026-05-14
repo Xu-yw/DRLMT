@@ -6,12 +6,7 @@ import pygame
 from simulation.connection import carla
 from simulation.sensors import CameraSensor, CameraSensorEnv, CollisionSensor
 from simulation.settings import *
-from mutation import (
-    state_out as _mut_state_out,
-    action_in as _mut_action_in,
-    reward_out as _mut_reward_out,
-    rc as _mut_rc,
-)
+import mutation as _mut
 
 
 class CarlaEnvironment():
@@ -197,7 +192,7 @@ class CarlaEnvironment():
 
             self.episode_start_time = time.time()
             self._last_done_reason = None
-            return _mut_state_out([self.image_obs, self.navigation_obs])
+            return _mut.state_out([self.image_obs, self.navigation_obs])
 
         except Exception as _e:
             import traceback; print("[RESET-FAIL]", _e); traceback.print_exc()
@@ -226,7 +221,7 @@ class CarlaEnvironment():
             velocity = self.vehicle.get_velocity()
             self.velocity = np.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2) * 3.6
             
-            action_idx = _mut_action_in(action_idx)
+            action_idx = _mut.action_in(action_idx)
             # Action fron action space for contolling the vehicle with a discrete action
             if self.continous_action_space:
                 steer = float(action_idx[0])
@@ -338,13 +333,13 @@ class CarlaEnvironment():
                     elif self.velocity > self.target_speed:               
                         reward = (1.0 - (self.velocity-self.target_speed) / (self.max_speed-self.target_speed)) * centering_factor * angle_factor  
                     else:                                         
-                        reward = _mut_rc('cruise', 1.0) * centering_factor * angle_factor 
+                        reward = _mut.rc('cruise', 1.0) * centering_factor * angle_factor 
                 else:
-                    reward = _mut_rc('cruise', 1.0) * centering_factor * angle_factor
+                    reward = _mut.rc('cruise', 1.0) * centering_factor * angle_factor
 
-                reward += _mut_rc('progress', 0.05) * progress_delta
+                reward += _mut.rc('progress', 0.05) * progress_delta
                 if self.distance_from_center > 1.5:
-                    reward -= _mut_rc('offcent', 0.2) * ((self.distance_from_center - 1.5) / 1.5)
+                    reward -= _mut.rc('offcent', 0.2) * ((self.distance_from_center - 1.5) / 1.5)
 
             if self.timesteps >= 7500:
                 done = True
@@ -392,7 +387,7 @@ class CarlaEnvironment():
                 for actor in self.actor_list:
                     actor.destroy()
             
-            return _mut_state_out([self.image_obs, self.navigation_obs]), _mut_reward_out(reward), done, [self.distance_covered, self.center_lane_deviation]
+            return _mut.state_out([self.image_obs, self.navigation_obs]), _mut.reward_out(reward), done, [self.distance_covered, self.center_lane_deviation]
 
         except Exception as _e:
             import traceback; print("[STEP-FAIL]", _e); traceback.print_exc()
