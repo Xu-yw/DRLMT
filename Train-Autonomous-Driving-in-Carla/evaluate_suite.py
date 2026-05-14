@@ -12,6 +12,7 @@ import sys
 import time
 import csv
 import json
+import random
 import argparse
 from datetime import datetime
 
@@ -43,6 +44,7 @@ def parse_args():
     p.add_argument("--mutation-type", default="none")
     p.add_argument("--town", default="Town07")
     p.add_argument("--limit", type=int, default=0, help="Optional: limit to first N cases (0 = all)")
+    p.add_argument("--eval-seed", type=int, default=20260514, help="base seed for per-case Python RNGs")
     return p.parse_args()
 
 
@@ -132,6 +134,10 @@ def main():
 
         for case in cases:
             t0 = time.time()
+            case_seed = (args.eval_seed * 1000003 + int(case["case_id"])) & 0x7FFFFFFF
+            random.seed(case_seed)
+            np.random.seed(case_seed)
+            torch.manual_seed(case_seed)
             env._eval_spawn_idx = case["spawn_idx"]
             env._eval_heading_offset_deg = case["heading_offset_deg"]
 
@@ -159,7 +165,7 @@ def main():
             info = None
 
             for step_i in range(args.max_steps):
-                action = agent.get_action(obs, step_i, total_reward, done, train=False)
+                action = agent.get_action(obs, step_i, total_reward, done, train=False, deterministic=True)
                 step_out = env.step(action)
                 if step_out is None or step_out[0] is None:
                     done_reason = "step_failure"

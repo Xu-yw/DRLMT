@@ -53,12 +53,12 @@ class PPOAgent(object):
         self.MseLoss = nn.MSELoss()
 
 
-    def get_action(self, obs, flag=None, reward=None, done=None, train=True):
+    def get_action(self, obs, flag=None, reward=None, done=None, train=True, deterministic=False):
 
         with torch.no_grad():
             if isinstance(obs, np.ndarray):
                 obs = torch.tensor(obs, dtype=torch.float)
-            action, logprob = self.old_policy.get_action_and_log_prob(obs.to(device))
+            action, logprob = self.old_policy.get_action_and_log_prob(obs.to(device), deterministic=deterministic)
 
         if train:
             # Store state/action/logprob now; reward/done belongs to env.step(action).

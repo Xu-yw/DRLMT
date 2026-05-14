@@ -56,13 +56,16 @@ class ActorCritic(nn.Module):
             obs = torch.tensor(obs, dtype=torch.float)
         return self.critic(obs)
     
-    def get_action_and_log_prob(self, obs):
+    def get_action_and_log_prob(self, obs, deterministic=False):
         # Query the actor network for a mean action.
         # Same thing as calling self.actor.forward(obs)
         
         if isinstance(obs, np.ndarray):
             obs = torch.tensor(obs, dtype=torch.float)
         mean = self.actor(obs)
+        if deterministic:
+            # Evaluation path: use actor mean directly, skip stochastic sampling.
+            return mean.detach(), torch.zeros(()).detach()
         # Create our Multivariate Normal Distribution
         dist = MultivariateNormal(mean, self.cov_mat)
         # Sample an action from the distribution and get its log prob
