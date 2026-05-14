@@ -22,7 +22,7 @@ def generate_cases(n_cases=500, n_spawn_points=120, seed=42):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="eval/test_cases_v1.json",
+    parser.add_argument("--output", default="/root/autodl-tmp/eval/test_cases_v1.json",
                         help="Output JSON path (will mkdir parent)")
     parser.add_argument("--n-cases", type=int, default=500)
     parser.add_argument("--n-spawn-points", type=int, default=120)
