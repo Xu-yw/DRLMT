@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from torch.distributions import MultivariateNormal
+from mutation import es_sample as _mut_es_sample
 
 
 
@@ -70,6 +71,7 @@ class ActorCritic(nn.Module):
         dist = MultivariateNormal(mean, self.cov_mat)
         # Sample an action from the distribution and get its log prob
         action = dist.sample()
+        action = _mut_es_sample(action, mean=mean, cov_mat=self.cov_mat, dist=dist)
         log_prob = dist.log_prob(action)
         
         # Return the sampled action and the log prob of that action
