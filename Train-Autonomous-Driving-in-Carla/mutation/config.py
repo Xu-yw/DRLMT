@@ -66,3 +66,11 @@ def reset_config(cfg=None):
     """Test helper. cfg=None forces re-read from env on next get_config()."""
     global _config_singleton
     _config_singleton = cfg
+
+
+def init():
+    """Entry-point hook: force reload from env vars. Called by training/eval
+    scripts after setting MUTATION_TYPE/MUTATION_SEED/MUTATION_INTENSITY env vars
+    so the singleton picks up the current process environment."""
+    reset_config(None)
+    return get_config()
