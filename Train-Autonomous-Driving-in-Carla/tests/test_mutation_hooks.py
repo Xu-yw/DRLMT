@@ -225,7 +225,8 @@ def test_registry_register_and_get():
 
     fn = mutation.get_operator("state_out", "DummyOp")
     assert fn is _dummy
-    assert mutation.list_operators("state_out") == ["DummyOp"]
+    # Use containment: baseline already has bundled Phase 3.1+ state_out ops.
+    assert "DummyOp" in mutation.list_operators("state_out")
 
 
 def test_dispatch_routes_to_registered_operator():
