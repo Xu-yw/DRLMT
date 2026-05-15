@@ -1,14 +1,14 @@
 """Action-in operators (hook category = 'action_in').
 
-Phase 3.1 P0 operators:
-  AcRepR -- Action Repeat Randomly: each step, with prob = 0.3 * intensity,
-            return cached previous action instead of current.
-  AcFuzS -- Action Fuzz Sustained: every step, quantize action to lower precision.
+P0 (Phase 3.1):
+  AcRepR -- Action Repeat Randomly: replay cached previous action at random.
+  AcFuzS -- Action Fuzz Sustained: quantize action every step.
+
+P1 (Phase 3.2):
+  AcDisoR -- Action Disorder Randomly: at random, replace action with a fresh
+             uniform-random action in [-1, 1] (decision-making fault).
 
 Hook signature: fn(action, ctx, cfg) -> action (np.ndarray shape (2,))
-
-Note: action_in is called after tick() in the dispatcher, so current_step()
-returns the +1 value. Operators read it via ctx as needed.
 """
 import numpy as np
 
@@ -20,7 +20,6 @@ from mutation.timing import trigger
 @register("AcRepR", "action_in")
 def ac_rep_r(action, ctx, cfg):
     timestep = current_step()
-    # R timing: random trigger; prob scales with intensity (clipped to [0,1])
     prob = min(0.3 * cfg.intensity if cfg.intensity > 0 else 0.3, 1.0)
     if not trigger("AcRepR", timestep, rng=ctx.rng, prob=prob):
         ctx.state["last_action"] = np.asarray(action).copy()
@@ -34,7 +33,21 @@ def ac_rep_r(action, ctx, cfg):
 
 @register("AcFuzS", "action_in")
 def ac_fuz_s(action, ctx, cfg):
-    """Quantize action to bins. intensity in [0, 1]."""
     action = np.asarray(action)
     bins = max(int(10 * (1 - cfg.intensity * 0.5)), 2)
     return (np.round(action * bins) / bins).astype(action.dtype)
+
+
+@register("AcDisoR", "action_in")
+def ac_diso_r(action, ctx, cfg):
+    """Random: replace with uniform random action in [-1, 1]."""
+    prob = min(0.3 * cfg.intensity if cfg.intensity > 0 else 0.3, 1.0)
+    if not trigger("AcDisoR", current_step(), rng=ctx.rng, prob=prob):
+        return action
+    action_arr = np.asarray(action)
+    new_action = np.array(
+        [float(ctx.np_rng.uniform(-1.0, 1.0)),
+         float(ctx.np_rng.uniform(-1.0, 1.0))],
+        dtype=action_arr.dtype,
+    )
+    return new_action
