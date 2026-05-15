@@ -6,6 +6,7 @@ import torch.nn as nn
 from encoder_init import EncodeState
 from networks.on_policy.ppo.ppo import ActorCritic
 from parameters import  *
+import mutation as _mut
 
 device = torch.device("cpu")
 
@@ -60,6 +61,7 @@ class PPOAgent(object):
             if isinstance(obs, np.ndarray):
                 obs = torch.tensor(obs, dtype=torch.float)
             action, logprob = self.old_policy.get_action_and_log_prob(obs.to(device), deterministic=deterministic)
+            action, logprob = _mut.pv_out(action, logprob)
 
         if train:
             # Store state/action/logprob now; reward/done belongs to env.step(action).

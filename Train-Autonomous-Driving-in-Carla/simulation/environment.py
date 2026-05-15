@@ -192,6 +192,7 @@ class CarlaEnvironment():
 
             self.episode_start_time = time.time()
             self._last_done_reason = None
+            _mut.reset_episode()
             return _mut.state_out([self.image_obs, self.navigation_obs])
 
         except Exception as _e:
