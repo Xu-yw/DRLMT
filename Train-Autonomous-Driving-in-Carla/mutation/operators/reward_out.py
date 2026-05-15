@@ -1,10 +1,12 @@
 """Reward-out operators (hook category = 'reward_out').
 
-Phase 3.1 P0 operators:
-  ReRepP  -- Reward Repeat Periodically: every period_steps, replay cached
-             previous reward.
-  ReDistP -- Reward Disturbance Periodically: every period_steps, add Gaussian
-             noise with std = 0.5 * intensity.
+P0 (Phase 3.1):
+  ReRepP  -- Reward Repeat Periodically.
+  ReDistP -- Reward Disturbance Periodically: + Gaussian noise.
+
+P1 (Phase 3.2):
+  ReDisoP -- Reward Disorder Periodically: irregular modification at period
+             (sign flip OR random scale, picked uniformly).
 
 Hook signature: fn(reward, ctx, cfg) -> reward (float)
 """
@@ -33,3 +35,14 @@ def re_dist_p(reward, ctx, cfg):
         return reward
     noise = ctx.np_rng.normal(0.0, 0.5 * cfg.intensity)
     return float(reward + noise)
+
+
+@register("ReDisoP", "reward_out")
+def re_diso_p(reward, ctx, cfg):
+    """Period: irregular modification — 50/50 sign-flip-scaled OR random-scale."""
+    timestep = current_step()
+    if not trigger("ReDisoP", timestep):
+        return reward
+    if ctx.rng.random() < 0.5:
+        return -float(reward) * cfg.intensity
+    return float(reward) * (ctx.rng.random() * 2.0)
