@@ -1,15 +1,18 @@
 """Operator registration + dispatch.
 
-Phase 3.0: no operators registered; hooks dispatchers fall back to identity.
-Phase 3.1+: operators imported and decorated with @register; dispatchers route.
+Phase 3.1+: bundled operators registered via @register decorators at
+mutation.operators submodule import time. The bundled set is captured as
+the "baseline" by _capture_baseline() once at framework init. Tests that
+ad-hoc @register custom operators can call reset_registry() to restore
+the baseline (i.e. drop their additions, keep bundled).
 
-Hook categories (one per hook in hooks.py):
-  state_out, action_in, reward_out, rc, pv_out, es_sample
+Hook categories: state_out, action_in, reward_out, rc, pv_out, es_sample.
 """
 from collections import defaultdict
 
 
 _registry = defaultdict(dict)
+_baseline = None  # set by _capture_baseline() after operators autoload
 
 
 def register(op_name, hook_category):
@@ -31,5 +34,21 @@ def list_operators(hook_category=None):
 
 
 def reset_registry():
-    """Test helper. Wipes all registrations."""
+    """Restore the baseline registry (drop test-only ad-hoc registrations).
+
+    If baseline not yet captured (e.g. registry tests run before framework
+    init completes), falls back to wiping the entire registry.
+    """
+    if _baseline is None:
+        _registry.clear()
+        return
     _registry.clear()
+    for cat, ops in _baseline.items():
+        _registry[cat].update(ops)
+
+
+def _capture_baseline():
+    """Snapshot current registry as the baseline. Called once by
+    mutation/__init__.py after operators autoload completes."""
+    global _baseline
+    _baseline = {cat: dict(ops) for cat, ops in _registry.items()}
