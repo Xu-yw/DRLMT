@@ -2,6 +2,7 @@
 # plan-06 watchdog v3: CARLA crash + Python hang recovery
 # Usage: watchdog_v3.sh <mutation_type> <seed> [reward_threshold]
 # Env overrides: PORT, TOTAL_TIMESTEPS, CHECK_INTERVAL, STALE_SECONDS, CARLA_STARTUP_SECONDS
+# Phase 4 (2026-05-16): per-job CARLA port + per-job meta-ckpt dir via PPO_META_CHECKPOINT_DIR
 set -u
 
 MUT_TYPE="${1:-baseline}"
@@ -14,6 +15,7 @@ STALE_SECONDS="${STALE_SECONDS:-300}"
 CARLA_STARTUP_SECONDS="${CARLA_STARTUP_SECONDS:-45}"
 REPO_DIR="/root/autodl-tmp/DRLMT/Train-Autonomous-Driving-in-Carla"
 LOG_DIR="/root/autodl-tmp/runs/${MUT_TYPE}/seed${SEED}"
+META_CKPT_DIR="${REPO_DIR}/checkpoints/PPO_${MUT_TYPE}_s${SEED}/Town07"
 DONE_FLAG="${LOG_DIR}/training_done.flag"
 EP_LOG="${EPISODE_LOG_PATH:-${LOG_DIR}/episode_log.csv}"
 TRAIN_LOG="${LOG_DIR}/train.log"
@@ -41,7 +43,7 @@ count_ep_lines() {
 
 checkpoint_exists() {
     local model_dir="${REPO_DIR}/preTrained_models/ppo_${MUT_TYPE}_s${SEED}/Town07"
-    local meta_dir="${REPO_DIR}/checkpoints/PPO/Town07"
+    local meta_dir="$META_CKPT_DIR"
     find "$model_dir" -maxdepth 1 -name 'ppo_policy_*_.pth' 2>/dev/null | grep -q . && \
     find "$meta_dir" -maxdepth 1 -name 'checkpoint_ppo_*.pickle' 2>/dev/null | grep -q .
 }
@@ -87,7 +89,7 @@ start_carla() {
 }
 
 cycle=0
-log "watchdog started: mut=${MUT_TYPE} seed=${SEED} threshold=${REWARD_THRESHOLD} total_timesteps=${TOTAL_TIMESTEPS} stale=${STALE_SECONDS}s"
+log "watchdog started: mut=${MUT_TYPE} seed=${SEED} port=${PORT} threshold=${REWARD_THRESHOLD} total_timesteps=${TOTAL_TIMESTEPS} stale=${STALE_SECONDS}s meta_ckpt_dir=${META_CKPT_DIR}"
 
 while true; do
     cycle=$((cycle + 1))
@@ -109,7 +111,7 @@ while true; do
         if [ -x "$trim_script" ] && [ -f "$EP_LOG" ]; then
             /root/miniconda3/envs/DRLMutation/bin/python "$trim_script" \
                 --csv "$EP_LOG" \
-                --checkpoint-dir "${REPO_DIR}/checkpoints/PPO/Town07" | while read -r line; do
+                --checkpoint-dir "$META_CKPT_DIR" | while read -r line; do
                 log "cycle ${cycle}: $line"
             done
         fi
@@ -128,10 +130,12 @@ while true; do
         EPISODE_LOG_PATH="$EP_LOG" \
         STATE_TRAJ_LOG_PATH="$TRAJ_LOG" \
         TRAINING_DONE_FLAG="$DONE_FLAG" \
+        PPO_META_CHECKPOINT_DIR="$META_CKPT_DIR" \
         /root/miniconda3/envs/DRLMutation/bin/python continuous_driver.py \
             --exp-name ppo \
             --town Town07 \
             --seed "$SEED" \
+            --port "$PORT" \
             --total-timesteps "$TOTAL_TIMESTEPS" \
             "${load_args[@]}" >> "$TRAIN_LOG" 2>&1 &
     train_pid=$!
