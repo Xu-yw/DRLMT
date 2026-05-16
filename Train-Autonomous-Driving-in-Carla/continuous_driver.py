@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument('--torch-deterministic', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True, help='if toggled, `torch.backends.cudnn.deterministic=False`')
     parser.add_argument('--cuda', type=lambda x:bool(strtobool(x)), default=True, nargs='?', const=True, help='if toggled, cuda will not be enabled by deafult')
     parser.add_argument('--termination_of_reward', type=int, default=TERMINATION_OF_REWARD, help='termination_of_reward')
+    parser.add_argument('--port', type=int, default=int(os.environ.get('CARLA_PORT', 2000)), help='CARLA RPC port (per-job for parallel mutant training)')
     args = parser.parse_args()
     
     return args
@@ -108,6 +109,8 @@ def runner():
     #========================================================================
 
     try:
+        from simulation import settings as _sim_settings
+        _sim_settings.PORT = args.port
         client, world = ClientConnection(town).setup()
         logging.info("Connection has been setup successfully.")
     except:
