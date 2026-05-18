@@ -8,6 +8,7 @@ set -u
 MUT_TYPE="${1:-baseline}"
 SEED="${2:-0}"
 REWARD_THRESHOLD="${3:-0}"
+MUTATION_INTENSITY="${MUTATION_INTENSITY:-1.0}"
 PORT="${PORT:-2000}"
 TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-10000000}"
 CHECK_INTERVAL="${CHECK_INTERVAL:-20}"
@@ -89,7 +90,7 @@ start_carla() {
 }
 
 cycle=0
-log "watchdog started: mut=${MUT_TYPE} seed=${SEED} port=${PORT} threshold=${REWARD_THRESHOLD} total_timesteps=${TOTAL_TIMESTEPS} stale=${STALE_SECONDS}s meta_ckpt_dir=${META_CKPT_DIR}"
+log "watchdog started: mut=${MUT_TYPE} seed=${SEED} port=${PORT} threshold=${REWARD_THRESHOLD} intensity=${MUTATION_INTENSITY} total_timesteps=${TOTAL_TIMESTEPS} stale=${STALE_SECONDS}s meta_ckpt_dir=${META_CKPT_DIR}"
 
 while true; do
     cycle=$((cycle + 1))
@@ -125,6 +126,7 @@ while true; do
     env \
         MUTATION_TYPE="$MUT_TYPE" \
         MUTATION_SEED="$SEED" \
+        MUTATION_INTENSITY="$MUTATION_INTENSITY" \
         TRAINING_SEED="$SEED" \
         REWARD_THRESHOLD="$REWARD_THRESHOLD" \
         EPISODE_LOG_PATH="$EP_LOG" \

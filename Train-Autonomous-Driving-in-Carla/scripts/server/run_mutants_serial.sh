@@ -8,6 +8,7 @@
 # Env overrides:
 #   SEED=0
 #   REWARD_THRESHOLD=0     (1M-step budget stop; no reward threshold)
+#   MUTATION_INTENSITY=1.0 (operator strength; spec default)
 #   TOTAL_TIMESTEPS=1000000 (1M timesteps 预算)
 #   PORT=2000              (单 CARLA 端口)
 #   MUTANT_QUEUE="op1 op2 ..." (空格分隔，覆盖默认 12 个)
@@ -22,6 +23,7 @@ set -u
 
 SEED="${SEED:-0}"
 REWARD_THRESHOLD="${REWARD_THRESHOLD:-0}"
+MUTATION_INTENSITY="${MUTATION_INTENSITY:-1.0}"
 TOTAL_TIMESTEPS="${TOTAL_TIMESTEPS:-1000000}"
 PORT="${PORT:-2000}"
 
@@ -42,7 +44,7 @@ log() {
 }
 
 log "wrapper started: pid=$$ queue=[$QUEUE]"
-log "config: seed=$SEED port=$PORT threshold=$REWARD_THRESHOLD budget=$TOTAL_TIMESTEPS"
+log "config: seed=$SEED port=$PORT threshold=$REWARD_THRESHOLD intensity=$MUTATION_INTENSITY budget=$TOTAL_TIMESTEPS"
 log "status_csv=$STATUS_CSV"
 
 total=$(echo "$QUEUE" | wc -w)
@@ -62,6 +64,7 @@ for MUT in $QUEUE; do
 
     PORT="$PORT" \
         TOTAL_TIMESTEPS="$TOTAL_TIMESTEPS" \
+        MUTATION_INTENSITY="$MUTATION_INTENSITY" \
         bash /root/autodl-tmp/watchdog.sh "$MUT" "$SEED" "$REWARD_THRESHOLD"
     EXIT=$?
     ENDED=$(date '+%F %T')

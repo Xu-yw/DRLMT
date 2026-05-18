@@ -65,8 +65,9 @@ def st_dist_p(obs, ctx, cfg):
     image_obs, navigation_obs = obs
     nav_noise = ctx.np_rng.normal(0.0, 0.1 * cfg.intensity, navigation_obs.shape)
     img_noise = ctx.np_rng.normal(0.0, 0.05 * cfg.intensity, image_obs.shape)
+    img_mut = np.clip(image_obs + img_noise, 0.0, 1.0)
     return [
-        (image_obs + img_noise).astype(image_obs.dtype),
+        img_mut.astype(image_obs.dtype),
         (navigation_obs + nav_noise).astype(navigation_obs.dtype),
     ]
 

@@ -43,6 +43,9 @@ def re_diso_p(reward, ctx, cfg):
     timestep = current_step()
     if not trigger("ReDisoP", timestep):
         return reward
+    intensity = max(float(cfg.intensity), 0.0)
     if ctx.rng.random() < 0.5:
-        return -float(reward) * cfg.intensity
-    return float(reward) * (ctx.rng.random() * 2.0)
+        # intensity=0 -> original reward; intensity=1 -> full sign flip.
+        return float(reward) * (1.0 - 2.0 * intensity)
+    scale = 1.0 + ((ctx.rng.random() * 2.0) - 1.0) * intensity
+    return float(reward) * scale

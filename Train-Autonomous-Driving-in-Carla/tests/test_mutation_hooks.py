@@ -94,6 +94,7 @@ def test_config_from_env_default(monkeypatch):
     cfg = mutation.get_config()
     assert cfg.mutation_type == "none"
     assert cfg.seed == 0
+    assert cfg.intensity == 1.0
     assert cfg.is_active is False
 
 

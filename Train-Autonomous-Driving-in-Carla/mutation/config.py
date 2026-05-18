@@ -14,7 +14,7 @@ import numpy as np
 
 
 class MutationConfig:
-    def __init__(self, mutation_type="none", seed=0, intensity=0.0):
+    def __init__(self, mutation_type="none", seed=0, intensity=1.0):
         self.mutation_type = mutation_type
         self.seed = int(seed)
         self.intensity = float(intensity)
@@ -29,7 +29,7 @@ class MutationConfig:
         return cls(
             mutation_type=os.environ.get("MUTATION_TYPE", "none"),
             seed=os.environ.get("MUTATION_SEED", "0"),
-            intensity=os.environ.get("MUTATION_INTENSITY", "0.0"),
+            intensity=os.environ.get("MUTATION_INTENSITY", "1.0"),
         )
 
     @property

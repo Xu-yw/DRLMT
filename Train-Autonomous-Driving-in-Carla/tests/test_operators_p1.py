@@ -63,6 +63,16 @@ def test_st_dist_p_shape_dtype_preserved():
         assert out[1].shape == obs[1].shape
 
 
+def test_st_dist_p_clips_image_to_normalized_domain():
+    _set_op("StDistP", seed=0, intensity=5.0)
+    for _ in range(10):
+        mutation.tick()
+    obs = _mk_obs(123)
+    out = mutation.state_out(obs)
+    assert out[0].min() >= 0.0
+    assert out[0].max() <= 1.0
+
+
 # ---------------- StDisoP ---------------- #
 
 def test_st_diso_p_replaces_with_history():
@@ -122,6 +132,13 @@ def test_re_diso_p_seeded_reproducible():
         mutation.tick()
     out2 = mutation.reward_out(3.0)
     assert out1 == out2
+
+
+def test_re_diso_p_intensity_zero_is_noop_at_trigger():
+    _set_op("ReDisoP", seed=42, intensity=0.0)
+    for _ in range(10):
+        mutation.tick()
+    assert mutation.reward_out(3.0) == 3.0
 
 
 # ---------------- AcDisoR ---------------- #
