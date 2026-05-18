@@ -7,7 +7,7 @@
 #
 # Env overrides:
 #   SEED=0
-#   REWARD_THRESHOLD=1700  (来自 Phase 1 baseline)
+#   REWARD_THRESHOLD=0     (1M-step budget stop; no reward threshold)
 #   TOTAL_TIMESTEPS=1000000 (1M timesteps 预算)
 #   PORT=2000              (单 CARLA 端口)
 #   MUTANT_QUEUE="op1 op2 ..." (空格分隔，覆盖默认 12 个)
