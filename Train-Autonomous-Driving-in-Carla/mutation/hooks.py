@@ -17,9 +17,13 @@ Dispatcher contract:
   - MUTATION_TYPE=none -> all hooks return identity (early exit)
   - MUTATION_TYPE=<op> and registry.get(category, op) is None -> identity fallback
   - MUTATION_TYPE=<op> and registered -> route to operator(payload, ctx, cfg)
+
+P0-1 (2026-05-18): each dispatcher emits one [MUT-PROBE] line on its first
+dispatch to a registered operator (per process lifetime). See mutation/_probe.py
+for the wire format and the bug classes it guards against.
 """
 from .config import get_config
-from .context import get_context, tick
+from .context import get_context, tick, current_step
 from .registry import get as _registry_get
 
 
@@ -38,7 +42,10 @@ def state_out(obs):
     fn = _registry_get("state_out", op)
     if fn is None:
         return obs
-    return fn(obs, get_context(op, cfg.seed), cfg)
+    out = fn(obs, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_state_out
+    emit_state_out(op, cfg.intensity, obs, out, current_step())
+    return out
 
 
 def action_in(action):
@@ -53,7 +60,10 @@ def action_in(action):
     fn = _registry_get("action_in", op)
     if fn is None:
         return action
-    return fn(action, get_context(op, cfg.seed), cfg)
+    out = fn(action, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_action_in
+    emit_action_in(op, cfg.intensity, action, out, current_step())
+    return out
 
 
 def reward_out(reward):
@@ -63,7 +73,10 @@ def reward_out(reward):
     fn = _registry_get("reward_out", op)
     if fn is None:
         return reward
-    return fn(reward, get_context(op, cfg.seed), cfg)
+    out = fn(reward, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_reward_out
+    emit_reward_out(op, cfg.intensity, reward, out, current_step())
+    return out
 
 
 def rc(coef_name, default):
@@ -73,7 +86,10 @@ def rc(coef_name, default):
     fn = _registry_get("rc", op)
     if fn is None:
         return default
-    return fn(coef_name, default, get_context(op, cfg.seed), cfg)
+    out = fn(coef_name, default, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_rc
+    emit_rc(op, cfg.intensity, coef_name, default, out, current_step())
+    return out
 
 
 def pv_out(action, logprob, dist):
@@ -93,7 +109,10 @@ def pv_out(action, logprob, dist):
     fn = _registry_get("pv_out", op)
     if fn is None:
         return action, logprob
-    return fn(action, logprob, dist, get_context(op, cfg.seed), cfg)
+    new_action, new_logprob = fn(action, logprob, dist, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_pv_out
+    emit_pv_out(op, cfg.intensity, action, new_action, logprob, new_logprob, current_step())
+    return new_action, new_logprob
 
 
 def es_sample(action, mean, cov_mat, dist):
@@ -108,4 +127,7 @@ def es_sample(action, mean, cov_mat, dist):
     fn = _registry_get("es_sample", op)
     if fn is None:
         return action
-    return fn(action, mean, cov_mat, dist, get_context(op, cfg.seed), cfg)
+    out = fn(action, mean, cov_mat, dist, get_context(op, cfg.seed), cfg)
+    from ._probe import emit_es_sample
+    emit_es_sample(op, cfg.intensity, action, out, current_step())
+    return out
