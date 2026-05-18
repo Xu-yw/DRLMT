@@ -154,6 +154,7 @@ while true; do
     log "cycle ${cycle}: starting training; ep_log_lines=${before_lines}; train_log=${TRAIN_LOG}"
 
     env \
+        PYTHONUNBUFFERED=1 \
         MUTATION_TYPE="$MUT_TYPE" \
         MUTATION_SEED="$SEED" \
         MUTATION_INTENSITY="$MUTATION_INTENSITY" \
@@ -163,7 +164,7 @@ while true; do
         STATE_TRAJ_LOG_PATH="$TRAJ_LOG" \
         TRAINING_DONE_FLAG="$DONE_FLAG" \
         PPO_META_CHECKPOINT_DIR="$META_CKPT_DIR" \
-        /root/miniconda3/envs/DRLMutation/bin/python continuous_driver.py \
+        /root/miniconda3/envs/DRLMutation/bin/python -u continuous_driver.py \
             --exp-name ppo \
             --town Town07 \
             --seed "$SEED" \
