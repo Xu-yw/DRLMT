@@ -109,11 +109,11 @@ def test_config_from_env_active(monkeypatch):
     assert cfg.is_active is True
 
 
-# ---------------- Phase 3.0a: pv_out hook ---------------- #
+# ---------------- Phase 3.0a: pv_out hook (phase3.6 added dist param) ---------------- #
 
 def test_pv_out_none_identity():
     a, lp = object(), object()
-    a2, lp2 = mutation.pv_out(a, lp)
+    a2, lp2 = mutation.pv_out(a, lp, None)
     assert a2 is a
     assert lp2 is lp
 
@@ -121,9 +121,27 @@ def test_pv_out_none_identity():
 def test_pv_out_active_no_operator_passthrough():
     _set_active()
     a, lp = object(), object()
-    a2, lp2 = mutation.pv_out(a, lp)
+    a2, lp2 = mutation.pv_out(a, lp, None)
     assert a2 is a
     assert lp2 is lp
+
+
+def test_pv_out_dispatcher_passes_dist_to_operator():
+    """Verify dispatcher forwards dist (training path arg) to registered operator."""
+    captured = {}
+
+    @mutation.register("PVCapturingOp", "pv_out")
+    def _cap(action, logprob, dist, ctx, cfg):
+        captured["dist"] = dist
+        return action, logprob
+
+    _set_active(op="PVCapturingOp")
+    sentinel_dist = object()
+    mutation.pv_out("a", "lp", sentinel_dist)
+    assert captured["dist"] is sentinel_dist
+    # Eval path: None is also passed through
+    mutation.pv_out("a", "lp", None)
+    assert captured["dist"] is None
 
 
 # ---------------- Phase 3.0a: timing ---------------- #

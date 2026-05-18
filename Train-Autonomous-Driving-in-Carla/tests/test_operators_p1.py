@@ -155,37 +155,71 @@ def test_ac_diso_r_shape_dtype_preserved():
 
 # ---------------- PVDistR ---------------- #
 
+def _mk_pv_dist(mean_value=0.0, std=0.2):
+    """Build a MultivariateNormal matching PPO's actor distribution shape."""
+    from torch.distributions import MultivariateNormal
+    mean = torch.tensor([[mean_value, mean_value]], dtype=torch.float32)
+    cov_mat = torch.diag(torch.tensor([std * std, std * std], dtype=torch.float32))
+    return MultivariateNormal(mean, cov_mat)
+
+
 def test_pv_dist_r_passes_through_when_not_triggered():
     _set_op("PVDistR", seed=42, intensity=0.0)
     # intensity=0 -> prob=0.3 still positive but noise_std=0
     action = torch.tensor([[0.3, -0.5]])
     logprob = torch.tensor([1.234])
-    a2, lp2 = mutation.pv_out(action, logprob)
+    a2, lp2 = mutation.pv_out(action, logprob, None)
     # With std=0, even if triggered, noise is 0 -> action unchanged
     assert torch.allclose(a2, action)
     assert torch.equal(lp2, logprob)
 
 
-def test_pv_dist_r_adds_noise_some_steps():
+def test_pv_dist_r_adds_noise_some_steps_eval_path():
+    """Evaluation path (dist=None): noise applied to action, logprob unchanged (placeholder)."""
     _set_op("PVDistR", seed=42, intensity=1.0)
     action = torch.tensor([[0.3, -0.5]])
     logprob = torch.tensor([1.234])
     triggered = 0
     for _ in range(200):
-        a2, lp2 = mutation.pv_out(action, logprob)
+        a2, lp2 = mutation.pv_out(action, logprob, None)
         if not torch.allclose(a2, action):
             triggered += 1
-        # logprob is never recomputed by PV hook (design)
+        # Evaluation path: logprob is a placeholder, never recomputed
         assert torch.equal(lp2, logprob)
     # prob=0.3 -> ~60/200; allow [40, 90]
     assert 40 <= triggered <= 90
+
+
+def test_pv_dist_r_recomputes_logprob_on_training_path():
+    """Training path (dist provided): on trigger, logprob = dist.log_prob(new_action)."""
+    _set_op("PVDistR", seed=42, intensity=1.0)
+    action = torch.tensor([[0.3, -0.5]])
+    logprob = torch.tensor([1.234])
+    dist = _mk_pv_dist()
+    triggered_recomputed = 0
+    untriggered_unchanged = 0
+    for _ in range(200):
+        a2, lp2 = mutation.pv_out(action, logprob, dist)
+        if not torch.allclose(a2, action):
+            # On trigger, lp2 must equal dist.log_prob(a2), NOT the original logprob
+            expected = dist.log_prob(a2).detach()
+            assert torch.allclose(lp2, expected), \
+                f"logprob not recomputed: got {lp2}, expected {expected}"
+            triggered_recomputed += 1
+        else:
+            # No trigger: logprob unchanged
+            assert torch.equal(lp2, logprob)
+            untriggered_unchanged += 1
+    # prob=0.3 -> ~60/200 triggered; allow [40, 90]
+    assert 40 <= triggered_recomputed <= 90
+    assert triggered_recomputed + untriggered_unchanged == 200
 
 
 def test_pv_dist_r_shape_dtype_preserved():
     _set_op("PVDistR", seed=0, intensity=1.0)
     action = torch.tensor([[0.3, -0.5]], dtype=torch.float32)
     logprob = torch.tensor([0.5], dtype=torch.float32)
-    a2, lp2 = mutation.pv_out(action, logprob)
+    a2, lp2 = mutation.pv_out(action, logprob, None)
     assert a2.shape == action.shape
     assert a2.dtype == action.dtype
     assert lp2.dtype == logprob.dtype

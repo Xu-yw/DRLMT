@@ -66,21 +66,22 @@ class ActorCritic(nn.Module):
         mean = self.actor(obs)
         if deterministic:
             # Evaluation path: use actor mean directly, skip stochastic sampling.
-            return mean.detach(), torch.zeros(()).detach()
+            return mean.detach(), torch.zeros(()).detach(), None
         # Create our Multivariate Normal Distribution
         dist = MultivariateNormal(mean, self.cov_mat)
         # Sample an action from the distribution and get its log prob
         action = dist.sample()
         action = _mut.es_sample(action, mean=mean, cov_mat=self.cov_mat, dist=dist)
         log_prob = dist.log_prob(action)
-        
+
         # Return the sampled action and the log prob of that action
-        # Note that I'm calling detach() since the action and log_prob  
+        # Note that I'm calling detach() since the action and log_prob
         # are tensors with computation graphs, so I want to get rid
         # of the graph and just convert the action to numpy array.
         # log prob as tensor is fine. Our computation graph will
         # start later down the line.
-        return action.detach(), log_prob.detach()
+        # phase3.6: also return dist so pv_out can recompute logprob after action mutation.
+        return action.detach(), log_prob.detach(), dist
     
     def evaluate(self, obs, action):
 

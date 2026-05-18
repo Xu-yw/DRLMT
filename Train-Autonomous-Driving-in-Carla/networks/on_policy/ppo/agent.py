@@ -60,8 +60,8 @@ class PPOAgent(object):
         with torch.no_grad():
             if isinstance(obs, np.ndarray):
                 obs = torch.tensor(obs, dtype=torch.float)
-            action, logprob = self.old_policy.get_action_and_log_prob(obs.to(device), deterministic=deterministic)
-            action, logprob = _mut.pv_out(action, logprob)
+            action, logprob, dist = self.old_policy.get_action_and_log_prob(obs.to(device), deterministic=deterministic)
+            action, logprob = _mut.pv_out(action, logprob, dist)
 
         if train:
             # Store state/action/logprob now; reward/done belongs to env.step(action).

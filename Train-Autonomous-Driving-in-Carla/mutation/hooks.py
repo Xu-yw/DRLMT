@@ -76,11 +76,16 @@ def rc(coef_name, default):
     return fn(coef_name, default, get_context(op, cfg.seed), cfg)
 
 
-def pv_out(action, logprob):
-    """Called from agent.PPOAgent.get_action after policy returns (action, logprob).
+def pv_out(action, logprob, dist):
+    """Called from agent.PPOAgent.get_action after policy returns (action, logprob, dist).
 
-    Implementors must keep (action, logprob) self-consistent; if action is mutated,
-    logprob should be either recomputed or left coherent for PPO ratio stability.
+    dist: MultivariateNormal | None
+        - Training path: dist is the policy distribution used to sample action
+        - Evaluation path (deterministic=True): dist is None; operators must
+          handle this case (either skip logprob recompute or no-op)
+
+    Implementors that mutate action MUST keep (action, logprob) self-consistent;
+    use dist.log_prob(new_action) to recompute when dist is provided.
     """
     cfg, op = _resolve()
     if op is None:
@@ -88,7 +93,7 @@ def pv_out(action, logprob):
     fn = _registry_get("pv_out", op)
     if fn is None:
         return action, logprob
-    return fn(action, logprob, get_context(op, cfg.seed), cfg)
+    return fn(action, logprob, dist, get_context(op, cfg.seed), cfg)
 
 
 def es_sample(action, mean, cov_mat, dist):
