@@ -78,14 +78,28 @@ def test_st_fuz_s_quantizes_nav():
     assert not np.array_equal(out[1], obs[1])
 
 
-def test_st_fuz_s_quantizes_image_to_step():
+def test_st_fuz_s_quantizes_image_in_normalized_domain():
+    """phase3.6 fix: quantize in [0,1] float domain, NOT via int32 cast.
+
+    Guard against the regression: nonzero [0,1] inputs must stay mostly nonzero
+    (the old int32 cast bug produced an all-black image = visual removal, not
+    fuzzing).
+    """
     _set_op("StFuzS", intensity=1.0)
     obs = _mk_obs(rng_seed=5)
     mutation.tick()
     out = mutation.state_out(obs)
-    # intensity=1 -> bit_red=4 -> step=16. With float32 image in [0,1], cast
-    # via int32 produces 0; result should be all zeros (truncated).
-    assert np.all(out[0] == 0)
+    # critical anti-regression: nonzero input must produce mostly-nonzero output
+    nonzero_ratio = (out[0] > 0).sum() / out[0].size
+    assert nonzero_ratio > 0.9, \
+        f"StFuzS turned image black (cast int32 bug regressed?): nonzero ratio = {nonzero_ratio}"
+    # output stays in [0, 1] (still normalized)
+    assert out[0].min() >= 0.0 and out[0].max() <= 1.0
+    # intensity=1.0 -> img_bits=4 -> img_levels=16, so unique values should be at most 17
+    # (the values are {0/16, 1/16, ..., 16/16})
+    unique_vals = np.unique(out[0])
+    assert len(unique_vals) <= 17, \
+        f"StFuzS quantization too fine: {len(unique_vals)} unique values, expected <= 17"
 
 
 def test_st_fuz_s_shape_dtype_preserved():

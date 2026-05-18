@@ -35,14 +35,25 @@ def st_rep_p(obs, ctx, cfg):
 
 @register("StFuzS", "state_out")
 def st_fuz_s(obs, ctx, cfg):
+    """Sustained: quantize observations to a coarser precision (fuzzing, not removal).
+
+    phase3.6 fix (2026-05-18): quantize in the normalized [0, 1] float domain.
+    The old implementation cast image_obs (float32 in [0, 1]) to int32 first,
+    which truncated every pixel to 0 -> turned the image fully black (blinding
+    instead of fuzzing). Now we round in float space so reduced precision is
+    preserved without zeroing pixels.
+
+    intensity=1.0 -> image quantized to 16 levels (~4-bit equivalent)
+    intensity=0.5 -> image quantized to 32 levels (~5-bit equivalent)
+    """
     image_obs, navigation_obs = obs
     intensity = cfg.intensity
     nav_bins = max(int(10 * (1 - intensity * 0.5)), 2)
     nav_q = np.round(navigation_obs * nav_bins) / nav_bins
 
-    bit_red = max(int(4 * intensity), 1)
-    step = 2 ** bit_red
-    img_q = (image_obs.astype(np.int32) // step) * step
+    img_bits = max(int(8 - 4 * intensity), 1)
+    img_levels = 2 ** img_bits
+    img_q = np.clip(np.round(image_obs * img_levels) / img_levels, 0.0, 1.0)
     return [img_q.astype(image_obs.dtype), nav_q.astype(navigation_obs.dtype)]
 
 
