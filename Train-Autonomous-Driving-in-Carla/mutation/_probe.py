@@ -28,6 +28,15 @@ unambiguously identifies the intensity=0 / no-op class.
 if the output image is mostly zeros, sanity_nonzero will be near 0 even though
 perturbed=True.
 """
+
+# 中文说明：本文件只做观测和报警证据，不参与训练决策。
+# 当某个 (hook, op) 第一次真正 dispatch 到注册算子时，probe 打印一行 [MUT-PROBE]。
+# 这能快速判断三类问题：
+#   1) env 或 registry 配错，导致算子根本没触发；
+#   2) intensity 为 0 或实现错误，导致输入输出没有变化；
+#   3) dtype/clip 错误导致信号被破坏，例如图像被错误量化成全黑。
+# 输出里的 delta_mean 是输入输出平均绝对差；state_out 还额外记录 image/nav 差异和非零像素比例。
+
 import sys
 
 import numpy as np
@@ -36,6 +45,7 @@ import numpy as np
 _emitted = set()  # keys: (hook, op) tuples (rc uses (hook, op, coef_name))
 
 
+# 中文注释：测试辅助函数；清掉“已打印过”的集合，让下一次 dispatch 重新打印 probe。
 def reset():
     """Test helper: clear emission state so the next call re-emits."""
     _emitted.clear()
@@ -54,6 +64,7 @@ def _to_array(x):
         return None
 
 
+# 中文注释：计算输入输出平均绝对差，用来判断算子是否真的造成扰动。
 def _arr_delta(a, b):
     """mean(|a - b|) over matching-shape arrays; NaN if shapes mismatch."""
     aa = _to_array(a)
@@ -63,6 +74,7 @@ def _arr_delta(a, b):
     return float(np.mean(np.abs(aa - bb)))
 
 
+# 中文注释：专门给 state image 用，防止图像被错误处理成大面积 0。
 def _nonzero_ratio(img):
     """Fraction of strictly-positive pixels (guards StFuzS-blinding bug)."""
     arr = _to_array(img)
@@ -81,11 +93,13 @@ def _is_perturbed(delta):
     return delta == delta and delta > 1e-8  # NaN-safe
 
 
+# 中文注释：直接写 stdout 并 flush；配合 PYTHONUNBUFFERED/python -u 才能实时进入 train.log。
 def _emit(line):
     sys.stdout.write(line + "\n")
     sys.stdout.flush()
 
 
+# 中文注释：state_out probe 同时比较 image 和 navigation，并记录输出图像非零比例。
 def emit_state_out(op, intensity, obs_in, obs_out, step):
     key = ("state_out", op)
     if key in _emitted:
@@ -109,6 +123,7 @@ def emit_state_out(op, intensity, obs_in, obs_out, step):
     )
 
 
+# 中文注释：action_in probe 只比较动作向量输入输出差异。
 def emit_action_in(op, intensity, act_in, act_out, step):
     key = ("action_in", op)
     if key in _emitted:
@@ -121,6 +136,7 @@ def emit_action_in(op, intensity, act_in, act_out, step):
     )
 
 
+# 中文注释：reward_out probe 比较标量 reward 的绝对差。
 def emit_reward_out(op, intensity, r_in, r_out, step):
     key = ("reward_out", op)
     if key in _emitted:
@@ -136,6 +152,7 @@ def emit_reward_out(op, intensity, r_in, r_out, step):
     )
 
 
+# 中文注释：pv_out probe 同时观察 action 差异和 logprob 差异，方便发现 action/logprob 不一致。
 def emit_pv_out(op, intensity, act_in, act_out, lp_in, lp_out, step):
     key = ("pv_out", op)
     if key in _emitted:
@@ -157,6 +174,7 @@ def emit_pv_out(op, intensity, act_in, act_out, lp_in, lp_out, step):
     )
 
 
+# 中文注释：es_sample probe 比较原采样 action 和 hook 返回 action。
 def emit_es_sample(op, intensity, sample_in, sample_out, step):
     key = ("es_sample", op)
     if key in _emitted:
@@ -169,6 +187,7 @@ def emit_es_sample(op, intensity, sample_in, sample_out, step):
     )
 
 
+# 中文注释：rc probe 把 coef_name 纳入 key，同一 op 修改不同 reward 系数会分别打印。
 def emit_rc(op, intensity, coef_name, default, returned, step):
     key = ("rc", op, coef_name)
     if key in _emitted:

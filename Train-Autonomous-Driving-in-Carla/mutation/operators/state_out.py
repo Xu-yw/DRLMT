@@ -12,6 +12,12 @@ P1 (Phase 3.2):
 Hook signature: fn(obs, ctx, cfg) -> obs
   obs = [image_obs (np.float32 (160,80,3)), navigation_obs (np.float64 (5,))]
 """
+
+# 中文说明：本文件实现作用于观测状态的 4 个 mutant。
+# state_out 有两个插入点：env.reset() 返回 initial_obs 前，以及 env.step() 返回 next_obs 前。
+# obs 的结构固定为 [image_obs, navigation_obs]：image 是 np.float32 且已归一化到 [0,1]，navigation 是 5 维向量。
+# 因此所有图像扰动都必须在 [0,1] 浮点域处理，不能按 uint8 [0,255] 直接操作。
+
 import numpy as np
 
 from mutation.context import current_step
@@ -19,10 +25,12 @@ from mutation.registry import register
 from mutation.timing import trigger
 
 
+# 中文注释：StRepP，State Repeat Periodically；周期触发时返回上一份缓存状态。
 @register("StRepP", "state_out")
 def st_rep_p(obs, ctx, cfg):
     image_obs, navigation_obs = obs
     timestep = current_step()
+    # 未到周期时更新 last_state；到周期时不更新，才能真正“重复旧状态”。
     if not trigger("StRepP", timestep):
         ctx.state["last_state"] = (image_obs.copy(), navigation_obs.copy())
         return obs
@@ -33,6 +41,7 @@ def st_rep_p(obs, ctx, cfg):
     return [last[0].copy(), last[1].copy()]
 
 
+# 中文注释：StFuzS，State Fuzz Sustained；每一步把观测降精度，模拟感知模糊。
 @register("StFuzS", "state_out")
 def st_fuz_s(obs, ctx, cfg):
     """Sustained: quantize observations to a coarser precision (fuzzing, not removal).
@@ -48,6 +57,7 @@ def st_fuz_s(obs, ctx, cfg):
     """
     image_obs, navigation_obs = obs
     intensity = cfg.intensity
+    # intensity 越高，bins/bits 越少，状态表示越粗糙。
     nav_bins = max(int(10 * (1 - intensity * 0.5)), 2)
     nav_q = np.round(navigation_obs * nav_bins) / nav_bins
 
@@ -57,6 +67,7 @@ def st_fuz_s(obs, ctx, cfg):
     return [img_q.astype(image_obs.dtype), nav_q.astype(navigation_obs.dtype)]
 
 
+# 中文注释：StDistP，State Disturbance Periodically；周期触发时给图像和导航状态加高斯噪声。
 @register("StDistP", "state_out")
 def st_dist_p(obs, ctx, cfg):
     """Period: add Gaussian noise. image std = 0.05*intensity, nav std = 0.1*intensity."""
@@ -65,6 +76,7 @@ def st_dist_p(obs, ctx, cfg):
     image_obs, navigation_obs = obs
     nav_noise = ctx.np_rng.normal(0.0, 0.1 * cfg.intensity, navigation_obs.shape)
     img_noise = ctx.np_rng.normal(0.0, 0.05 * cfg.intensity, image_obs.shape)
+    # image_obs 来自 sensors.py 的 /255.0，因此加噪后必须 clip 回 [0,1]。
     img_mut = np.clip(image_obs + img_noise, 0.0, 1.0)
     return [
         img_mut.astype(image_obs.dtype),
@@ -72,10 +84,12 @@ def st_dist_p(obs, ctx, cfg):
     ]
 
 
+# 中文注释：StDisoP，State Disorder Periodically；周期触发时用历史观测替换当前观测。
 @register("StDisoP", "state_out")
 def st_diso_p(obs, ctx, cfg):
     """Period: replace current obs with a random pick from rolling history (capacity 100)."""
     timestep = current_step()
+    # rolling history 是 StDisoP 的核心；没有历史样本就无法制造时序错乱。
     history = ctx.state.setdefault("history", [])
     if not trigger("StDisoP", timestep):
         history.append((obs[0].copy(), obs[1].copy()))

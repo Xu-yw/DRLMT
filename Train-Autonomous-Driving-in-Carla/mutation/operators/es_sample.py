@@ -23,10 +23,18 @@ is a name-only match and breaks faithful paper alignment. We remove the two
 operators rather than retain a misleading mapping. See plan-06 and the
 final report (Phase 8) for the methodological rationale.
 """
+
+# 中文说明：本文件实现 Exploration Strategy 相关 mutant。
+# 在 PPO 中，论文里的 ES 可以映射到动作分布采样策略：actor 输出 mean，代码构造 MultivariateNormal，
+# 然后从 dist.sample() 得到随机动作。es_sample hook 就插在 sample 之后、log_prob 计算之前。
+# 因为 caller 会在 hook 返回后重新 dist.log_prob(action)，所以此处替换 action 仍能保持 logprob 自洽。
+
 from mutation.registry import register
 
 
+# 中文注释：ESRemS，Exploration Strategy Remove Sustained；持续移除随机探索采样。
 @register("ESRemS", "es_sample")
 def es_rem_s(action, mean, cov_mat, dist, ctx, cfg):
     """Sustained: always return mean (no exploration)."""
+    # 用 actor mean 替代 dist.sample()，等价于不再进行 stochastic exploration。
     return mean.detach()

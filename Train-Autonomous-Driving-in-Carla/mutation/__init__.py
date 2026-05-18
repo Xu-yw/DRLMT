@@ -1,4 +1,11 @@
 """Mutation runtime."""
+
+# 中文说明：本文件是 mutation 包的统一出口。
+# 训练/评估代码只需要 import mutation，就能拿到 config、context、hook、registry、timing 等公共 API。
+# 关键机制是最后导入 mutation.operators：这个导入会触发各算子模块里的 @register 装饰器，
+# 把 12 个 mutant 注册到 registry。随后 _capture_baseline() 记录一份“内置算子表”的快照，
+# 方便单元测试临时注册自定义算子后恢复到正式内置状态。
+
 from .config import MutationConfig, get_config, reset_config
 from .context import (
     OperatorContext,

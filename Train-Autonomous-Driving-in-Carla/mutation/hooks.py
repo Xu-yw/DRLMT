@@ -22,11 +22,19 @@ P0-1 (2026-05-18): each dispatcher emits one [MUT-PROBE] line on its first
 dispatch to a registered operator (per process lifetime). See mutation/_probe.py
 for the wire format and the bug classes it guards against.
 """
+
+# 中文说明：本文件是 Phase 2 runtime 的核心 dispatcher。
+# 每个 hook 都遵循同一套路：读取 cfg -> 如果 none 则原样返回 -> 按 hook 类别和 op 名查 registry ->
+# 找不到也原样返回 -> 找到就把 payload、OperatorContext、cfg 交给具体算子。
+# 这种设计保证 MUTATION_TYPE=none 时尽量等价于 baseline，也保证同一个 op 只影响它注册过的 hook。
+# 每次真正 dispatch 后都会调用 _probe 打一行 [MUT-PROBE]，作为“算子确实跑到这里”的运行证据。
+
 from .config import get_config
 from .context import get_context, tick, current_step
 from .registry import get as _registry_get
 
 
+# 中文注释：统一解析当前是否启用变异；未启用时各 hook 都走最快的 identity path。
 def _resolve():
     cfg = get_config()
     if not cfg.is_active:
@@ -34,6 +42,7 @@ def _resolve():
     return cfg, cfg.mutation_type
 
 
+# 中文注释：状态输出 hook；在 reset initial_obs 和 step next_obs 两个位置都会调用。
 def state_out(obs):
     """obs = [image_obs (np.float32 (160,80,3)), navigation_obs (np.float64 (5,))]."""
     cfg, op = _resolve()
@@ -48,6 +57,7 @@ def state_out(obs):
     return out
 
 
+# 中文注释：动作输入 hook；先 tick 再 dispatch，因此所有 P/R/S timing 都以 env.step 次数为基准。
 def action_in(action):
     """action = np.array shape (2,) for continuous, int for discrete.
 
@@ -66,6 +76,7 @@ def action_in(action):
     return out
 
 
+# 中文注释：最终奖励 hook；只改返回给 PPO 的 reward，不改变环境内部 done 判断。
 def reward_out(reward):
     cfg, op = _resolve()
     if op is None:
@@ -79,6 +90,7 @@ def reward_out(reward):
     return out
 
 
+# 中文注释：奖励系数 hook；当前 12 算子没有 rc 实现，但框架保留这个扩展点。
 def rc(coef_name, default):
     cfg, op = _resolve()
     if op is None:
@@ -92,6 +104,7 @@ def rc(coef_name, default):
     return out
 
 
+# 中文注释：policy 输出 hook；训练路径 dist 非空，算子若改 action 应负责重算 logprob。
 def pv_out(action, logprob, dist):
     """Called from agent.PPOAgent.get_action after policy returns (action, logprob, dist).
 
@@ -115,6 +128,7 @@ def pv_out(action, logprob, dist):
     return new_action, new_logprob
 
 
+# 中文注释：探索策略采样 hook；caller 会在它返回后计算 log_prob，所以这里不用返回 logprob。
 def es_sample(action, mean, cov_mat, dist):
     """Caller contract (ppo.py): invoke AFTER dist.sample(), BEFORE dist.log_prob(action).
 

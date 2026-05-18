@@ -18,6 +18,11 @@ Hook signature: fn(action, logprob, dist, ctx, cfg) -> (action, logprob)
   logprob: torch.Tensor shape (1,) on device  (or 0-d zero if deterministic)
   dist: MultivariateNormal | None  (None when deterministic=True)
 """
+
+# 中文说明：本文件实现 policy-value 输出层的 mutant。
+# pv_out 位于 agent 获取 policy action/logprob 后、写入 PPO memory 前。
+# 这里如果修改 action，必须同时让 logprob 与新 action 自洽；否则 PPO ratio 会用错旧概率，训练目标会被污染。
+
 import torch
 
 from mutation.context import current_step
@@ -25,11 +30,14 @@ from mutation.registry import register
 from mutation.timing import trigger
 
 
+# 中文注释：PVDistR，Policy-Value Disturbance Randomly；随机扰动 policy 输出 action。
 @register("PVDistR", "pv_out")
 def pv_dist_r(action, logprob, dist, ctx, cfg):
+    # intensity 控制触发概率；当前训练 intensity=1.0 时概率为 0.3。
     prob = min(0.3 * cfg.intensity if cfg.intensity > 0 else 0.3, 1.0)
     if not trigger("PVDistR", current_step(), rng=ctx.rng, prob=prob):
         return action, logprob
+    # 噪声加在 torch tensor 上，保持 device/dtype 与原 action 一致。
     noise_std = 0.1 * cfg.intensity
     noise = torch.normal(
         mean=0.0,
@@ -43,5 +51,6 @@ def pv_dist_r(action, logprob, dist, ctx, cfg):
         # Evaluation path: logprob is 0-d zero placeholder, no recompute needed
         return new_action, logprob
     # Training path: recompute logprob to keep (action, logprob) self-consistent
+    # 训练路径必须重算 logprob，保证 memory 中的 action/logprob 对自洽。
     new_logprob = dist.log_prob(new_action).detach()
     return new_action, new_logprob
