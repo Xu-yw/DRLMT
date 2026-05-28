@@ -215,7 +215,7 @@ def main():
     print("[CFG] Loaded " + str(len(cases)) + " test cases from " + args.test_cases)
 
     fieldnames = [
-        "case_id", "candidate", "suite", "spawn_idx", "heading_offset_deg",
+        "case_id", "candidate", "suite", "weather", "spawn_idx", "heading_offset_deg",
         "total_reward", "total_steps", "distance_m", "done_reason", "raw_fail",
         "progress_ratio", "final_waypoint_idx", "route_length", "wall_time_s", "mutation_type",
     ]
@@ -271,7 +271,7 @@ def main():
             if obs is None:
                 writer.writerow({
                     "case_id": case["case_id"], "candidate": args.candidate_name,
-                    "suite": args.suite, "spawn_idx": case["spawn_idx"],
+                    "suite": args.suite, "weather": args.weather, "spawn_idx": case["spawn_idx"],
                     "heading_offset_deg": round(case["heading_offset_deg"], 4),
                     "total_reward": 0.0, "total_steps": 0, "distance_m": 0.0,
                     "done_reason": "reset_failure", "raw_fail": 1,
@@ -321,7 +321,7 @@ def main():
 
             writer.writerow({
                 "case_id": case["case_id"], "candidate": args.candidate_name,
-                "suite": args.suite, "spawn_idx": case["spawn_idx"],
+                "suite": args.suite, "weather": args.weather, "spawn_idx": case["spawn_idx"],
                 "heading_offset_deg": round(case["heading_offset_deg"], 4),
                 "total_reward": round(total_reward, 4), "total_steps": steps,
                 "distance_m": round(info[0], 2) if info else 0.0,
