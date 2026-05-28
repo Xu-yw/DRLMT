@@ -30,6 +30,14 @@ from simulation.environment import CarlaEnvironment
 from parameters import LATENT_DIM, ACTION_STD_INIT, EPISODE_LENGTH
 
 
+EXPECTED_WEATHER_BY_SUITE = {
+    "validation": "ClearNoon",
+    "sunny": "ClearNoon",
+    "rainy": "MidRainyNoon",
+    "foggy": "Custom_Foggy",
+}
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--candidate-name", required=True, help="candidate label")
@@ -45,6 +53,9 @@ def parse_args():
     p.add_argument("--town", default="Town07")
     p.add_argument("--limit", type=int, default=0, help="Optional: limit to first N cases (0 = all)")
     p.add_argument("--eval-seed", type=int, default=20260514, help="base seed for per-case Python RNGs")
+    p.add_argument("--resume", action="store_true", help="Append to output CSV and skip completed case_id rows")
+    p.add_argument("--allow-weather-override", action="store_true",
+                   help="Allow suite/weather mismatch; default is strict for Phase 5")
     return p.parse_args()
 
 
@@ -57,6 +68,59 @@ def build_weather(name):
     if hasattr(carla.WeatherParameters, name):
         return getattr(carla.WeatherParameters, name)
     raise ValueError("Unknown weather preset: " + name)
+
+
+def validate_suite_weather(args):
+    expected = EXPECTED_WEATHER_BY_SUITE.get(args.suite)
+    if expected and args.weather != expected and not args.allow_weather_override:
+        raise ValueError(
+            "suite/weather mismatch: suite=%s expects weather=%s, got %s "
+            "(pass --allow-weather-override only for an intentional ablation)"
+            % (args.suite, expected, args.weather)
+        )
+
+
+def _parse_raw_fail(value):
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def read_existing_results(output_csv, fieldnames):
+    # Phase 5 长评估允许断点续跑；已有 CSV 只按完整 case_id 行计数。
+    completed_case_ids = set()
+    n_pass = 0
+    n_fail = 0
+    if not os.path.exists(output_csv) or os.path.getsize(output_csv) == 0:
+        return completed_case_ids, n_pass, n_fail
+    with open(output_csv, newline="") as csv_f:
+        reader = csv.DictReader(csv_f)
+        missing = [name for name in fieldnames if name not in (reader.fieldnames or [])]
+        if missing:
+            raise RuntimeError("existing CSV schema mismatch, missing fields: " + str(missing))
+        for row in reader:
+            case_id = row.get("case_id")
+            if case_id is None or case_id == "" or case_id in completed_case_ids:
+                continue
+            completed_case_ids.add(case_id)
+            raw_fail = _parse_raw_fail(row.get("raw_fail"))
+            if raw_fail == 1:
+                n_fail += 1
+            elif raw_fail == 0:
+                n_pass += 1
+    return completed_case_ids, n_pass, n_fail
+
+
+def open_output_csv(output_csv, fieldnames, resume):
+    append = resume and os.path.exists(output_csv) and os.path.getsize(output_csv) > 0
+    mode = "a" if append else "w"
+    csv_f = open(output_csv, mode, newline="")
+    writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
+    if not append:
+        writer.writeheader()
+        csv_f.flush()
+    return csv_f, writer
 
 
 def load_weights_into_agent(agent, weight_path):
@@ -81,6 +145,7 @@ def load_weights_into_agent(agent, weight_path):
 def main():
     args = parse_args()
 
+    validate_suite_weather(args)
     os.environ["MUTATION_TYPE"] = args.mutation_type
     try:
         from mutation import config as _mutation_config
@@ -102,6 +167,30 @@ def main():
         cases = cases[:args.limit]
     print("[CFG] Loaded " + str(len(cases)) + " test cases from " + args.test_cases)
 
+    fieldnames = [
+        "case_id", "candidate", "suite", "spawn_idx", "heading_offset_deg",
+        "total_reward", "total_steps", "distance_m", "done_reason", "raw_fail",
+        "progress_ratio", "final_waypoint_idx", "route_length", "wall_time_s", "mutation_type",
+    ]
+    t_global = datetime.now()
+
+    if args.resume:
+        completed_case_ids, n_pass, n_fail = read_existing_results(args.output_csv, fieldnames)
+    else:
+        completed_case_ids, n_pass, n_fail = set(), 0, 0
+    cases_to_run = [c for c in cases if str(c.get("case_id")) not in completed_case_ids]
+    print("[CFG] resume=" + str(args.resume) +
+          " completed=" + str(len(completed_case_ids)) +
+          " remaining=" + str(len(cases_to_run)))
+
+    if not cases_to_run:
+        tfr = n_fail / (n_pass + n_fail) if (n_pass + n_fail) > 0 else 0.0
+        print("[DONE] " + args.candidate_name + " on " + args.suite +
+              ": pass=" + str(n_pass) + " fail=" + str(n_fail) + " TFR=" + ("%.3f" % tfr))
+        print("[DONE] CSV: " + args.output_csv)
+        print("[DONE] elapsed: 0.0 min")
+        return
+
     client, world = ClientConnection(args.town).setup()
     weather = build_weather(args.weather)
     world.set_weather(weather)
@@ -117,22 +206,11 @@ def main():
     agent = PPOAgent(args.town, ACTION_STD_INIT)
     load_weights_into_agent(agent, args.candidate_ckpt)
 
-    fieldnames = [
-        "case_id", "candidate", "suite", "spawn_idx", "heading_offset_deg",
-        "total_reward", "total_steps", "distance_m", "done_reason", "raw_fail",
-        "progress_ratio", "final_waypoint_idx", "route_length", "wall_time_s", "mutation_type",
-    ]
-    t_global = datetime.now()
+    csv_f, writer = open_output_csv(args.output_csv, fieldnames, args.resume)
+    try:
+        processed_new = 0
 
-    with open(args.output_csv, "w", newline="") as csv_f:
-        writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
-        writer.writeheader()
-        csv_f.flush()
-
-        n_pass = 0
-        n_fail = 0
-
-        for case in cases:
+        for case in cases_to_run:
             t0 = time.time()
             case_seed = (args.eval_seed * 1000003 + int(case["case_id"])) & 0x7FFFFFFF
             random.seed(case_seed)
@@ -155,6 +233,14 @@ def main():
                 })
                 csv_f.flush()
                 n_fail += 1
+                processed_new += 1
+                if processed_new % 50 == 0 or processed_new == len(cases_to_run):
+                    tfr = n_fail / (n_pass + n_fail) if (n_pass + n_fail) > 0 else 0.0
+                    elapsed = (datetime.now() - t_global).total_seconds() / 60.0
+                    print("[PROGRESS] total=" + str(n_pass + n_fail) + "/" + str(len(cases)) +
+                          " | new=" + str(processed_new) + "/" + str(len(cases_to_run)) +
+                          " | pass=" + str(n_pass) + " fail=" + str(n_fail) +
+                          " TFR=" + ("%.3f" % tfr) + " | elapsed=" + ("%.1f" % elapsed) + "min")
                 continue
 
             obs = encode.process(obs)
@@ -203,13 +289,17 @@ def main():
                 n_fail += 1
             else:
                 n_pass += 1
+            processed_new += 1
 
-            if (case["case_id"] + 1) % 50 == 0:
+            if processed_new % 50 == 0 or processed_new == len(cases_to_run):
                 tfr = n_fail / (n_pass + n_fail) if (n_pass + n_fail) > 0 else 0.0
                 elapsed = (datetime.now() - t_global).total_seconds() / 60.0
-                print("[PROGRESS] " + str(case["case_id"]+1) + "/" + str(len(cases)) +
+                print("[PROGRESS] total=" + str(n_pass + n_fail) + "/" + str(len(cases)) +
+                      " | new=" + str(processed_new) + "/" + str(len(cases_to_run)) +
                       " | pass=" + str(n_pass) + " fail=" + str(n_fail) +
                       " TFR=" + ("%.3f" % tfr) + " | elapsed=" + ("%.1f" % elapsed) + "min")
+    finally:
+        csv_f.close()
 
     tfr = n_fail / (n_pass + n_fail) if (n_pass + n_fail) > 0 else 0.0
     elapsed = (datetime.now() - t_global).total_seconds() / 60.0
