@@ -5,7 +5,7 @@ Phase 5 评估调度器。
 
 读取 Phase 5 manifest，按 candidate × suite 调用 evaluate_suite.py。
 调度器负责：CARLA 端口检查、断点续跑、任务状态 CSV、observer 开关、
-失败后的有限重试。正式 500-case 和短 sanity 共用这一入口。
+失败后的有限重试。正式 100-case 和短 sanity 共用这一入口。
 """
 
 from __future__ import annotations
