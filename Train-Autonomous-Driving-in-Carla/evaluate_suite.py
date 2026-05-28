@@ -14,6 +14,7 @@ import csv
 import json
 import random
 import argparse
+import subprocess
 from datetime import datetime
 
 import numpy as np
@@ -56,6 +57,11 @@ def parse_args():
     p.add_argument("--resume", action="store_true", help="Append to output CSV and skip completed case_id rows")
     p.add_argument("--allow-weather-override", action="store_true",
                    help="Allow suite/weather mismatch; default is strict for Phase 5")
+    p.add_argument("--observer", action="store_true", help="Start tools/carla_pygame_observer.py during evaluation")
+    p.add_argument("--observer-web-host", default="127.0.0.1", help="observer HTTP bind host")
+    p.add_argument("--observer-web-port", type=int, default=8090, help="observer HTTP port")
+    p.add_argument("--observer-max-fps", type=float, default=10.0, help="observer stream FPS cap")
+    p.add_argument("--observer-log", default="", help="observer log path; default is output CSV dir/observer.log")
     return p.parse_args()
 
 
@@ -123,6 +129,45 @@ def open_output_csv(output_csv, fieldnames, resume):
     return csv_f, writer
 
 
+def start_observer(args):
+    if not args.observer:
+        return None, None
+    observer_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "carla_pygame_observer.py")
+    if not os.path.exists(observer_path):
+        raise RuntimeError("observer script not found: " + observer_path)
+    log_path = args.observer_log or os.path.join(os.path.dirname(os.path.abspath(args.output_csv)), "observer.log")
+    os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+    log_f = open(log_path, "a")
+    cmd = [
+        sys.executable, observer_path,
+        "--host", sim_settings.HOST,
+        "--port", str(args.port),
+        "--web-host", args.observer_web_host,
+        "--web-port", str(args.observer_web_port),
+        "--max-fps", str(args.observer_max_fps),
+    ]
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT, env=env)
+    print("[OBSERVER] started pid=" + str(proc.pid) +
+          " url=http://" + args.observer_web_host + ":" + str(args.observer_web_port) + "/" +
+          " log=" + log_path)
+    return proc, log_f
+
+
+def stop_observer(proc, log_f):
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+        print("[OBSERVER] stopped")
+    if log_f is not None:
+        log_f.close()
+
+
 def load_weights_into_agent(agent, weight_path):
     state = torch.load(weight_path, map_location="cpu")
     res_old = agent.old_policy.load_state_dict(state, strict=False)
@@ -158,6 +203,8 @@ def main():
     print("[CFG] port=" + str(args.port) + " town=" + args.town + " suite=" + args.suite + " weather=" + args.weather)
     print("[CFG] candidate=" + args.candidate_name + " ckpt=" + args.candidate_ckpt)
     print("[CFG] mutation_type=" + args.mutation_type)
+    if args.observer:
+        print("[CFG] observer=http://" + args.observer_web_host + ":" + str(args.observer_web_port) + "/")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_csv)), exist_ok=True)
 
@@ -206,6 +253,7 @@ def main():
     agent = PPOAgent(args.town, ACTION_STD_INIT)
     load_weights_into_agent(agent, args.candidate_ckpt)
 
+    observer_proc, observer_log = start_observer(args)
     csv_f, writer = open_output_csv(args.output_csv, fieldnames, args.resume)
     try:
         processed_new = 0
@@ -300,6 +348,7 @@ def main():
                       " TFR=" + ("%.3f" % tfr) + " | elapsed=" + ("%.1f" % elapsed) + "min")
     finally:
         csv_f.close()
+        stop_observer(observer_proc, observer_log)
 
     tfr = n_fail / (n_pass + n_fail) if (n_pass + n_fail) > 0 else 0.0
     elapsed = (datetime.now() - t_global).total_seconds() / 60.0
