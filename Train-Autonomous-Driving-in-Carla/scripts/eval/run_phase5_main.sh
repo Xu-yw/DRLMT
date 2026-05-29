@@ -11,6 +11,9 @@ set -euo pipefail
   --limit 100 \
   --port 2002 \
   --max-attempts 20 \
+  --watchdog-interval 30 \
+  --idle-timeout 1800 \
+  --carla-missing-timeout 120 \
   --restart-carla-on-fail \
   --observer \
   --observer-web-port 8090

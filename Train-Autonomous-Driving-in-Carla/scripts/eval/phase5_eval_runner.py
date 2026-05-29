@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -53,6 +54,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--observer", action="store_true")
     parser.add_argument("--observer-web-host", default="127.0.0.1")
     parser.add_argument("--observer-web-port", type=int, default=8090)
+    parser.add_argument("--watchdog-interval", type=int, default=30,
+                        help="seconds between child process health checks")
+    parser.add_argument("--idle-timeout", type=int, default=1800,
+                        help="seconds without new CSV rows before restarting evaluation")
+    parser.add_argument("--carla-missing-timeout", type=int, default=120,
+                        help="seconds to wait after CARLA process disappears before restart")
     return parser.parse_args()
 
 
@@ -114,6 +121,87 @@ def restart_carla(port: int, start_script: str, wait_s: int) -> None:
     time.sleep(5)
     subprocess.check_call(["bash", start_script, str(port)])
     time.sleep(wait_s)
+
+
+def carla_running(port: int) -> bool:
+    return subprocess.run(
+        ["pgrep", "-f", "carla-rpc-port={}".format(port)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def terminate_process_group(proc: subprocess.Popen, log_f, reason: str) -> None:
+    if proc.poll() is not None:
+        return
+    log_f.write("[WATCHDOG] terminating pid={} reason={}\n".format(proc.pid, reason))
+    log_f.flush()
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(1)
+    log_f.write("[WATCHDOG] SIGTERM timeout; sending SIGKILL pid={}\n".format(proc.pid))
+    log_f.flush()
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def run_child_with_watchdog(cmd: List[str], env: Dict[str, str], log_f, output_csv: str,
+                            target_rows: int, args: argparse.Namespace) -> Tuple[int, str]:
+    # 子进程单独成组，watchdog 超时时可以同时清理 evaluate 和 observer。
+    proc = subprocess.Popen(
+        cmd,
+        cwd=REPO,
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
+        env=env,
+        preexec_fn=os.setsid,
+    )
+    last_rows = data_rows(output_csv)
+    last_progress = time.monotonic()
+    carla_missing_since = None
+    log_f.write("[WATCHDOG] child_pid={} start_rows={} target_rows={} idle_timeout={} carla_missing_timeout={}\n".format(
+        proc.pid, last_rows, target_rows, args.idle_timeout, args.carla_missing_timeout))
+    log_f.flush()
+
+    while True:
+        returncode = proc.poll()
+        if returncode is not None:
+            return returncode, "exit"
+
+        now = time.monotonic()
+        rows = data_rows(output_csv)
+        if rows > last_rows:
+            last_rows = rows
+            last_progress = now
+            carla_missing_since = None
+            log_f.write("[WATCHDOG] progress rows={}/{} at={}\n".format(rows, target_rows, now_str()))
+            log_f.flush()
+
+        if not carla_running(args.port):
+            if carla_missing_since is None:
+                carla_missing_since = now
+                log_f.write("[WATCHDOG] CARLA missing at {}; waiting {}s before restart\n".format(
+                    now_str(), args.carla_missing_timeout))
+                log_f.flush()
+            elif now - carla_missing_since >= args.carla_missing_timeout:
+                terminate_process_group(proc, log_f, "carla_missing_timeout")
+                return -124, "carla_missing_timeout"
+        else:
+            carla_missing_since = None
+
+        if now - last_progress >= args.idle_timeout:
+            terminate_process_group(proc, log_f, "idle_timeout")
+            return -124, "idle_timeout"
+
+        time.sleep(args.watchdog_interval)
 
 
 def selected_tasks(rows: List[Dict[str, str]], args: argparse.Namespace) -> List[Tuple[Dict[str, str], str]]:
@@ -192,22 +280,25 @@ def run_task(row: Dict[str, str], suite: str, target_rows: int, args: argparse.N
         with open(log_path, "a") as log_f:
             log_f.write("\n[RUNNER] {} cmd={}\n".format(started, " ".join(cmd)))
             log_f.flush()
-            proc = subprocess.run(cmd, cwd=REPO, stdout=log_f, stderr=subprocess.STDOUT, env=env)
+            returncode, watchdog_status = run_child_with_watchdog(
+                cmd, env, log_f, output_csv, target_rows, args)
 
         rows = data_rows(output_csv)
         ended = now_str()
-        if proc.returncode == 0 and rows >= target_rows:
+        if returncode == 0 and rows >= target_rows:
             status = "done"
-        elif proc.returncode == 0:
+        elif returncode == 0:
             status = "partial"
+        elif watchdog_status != "exit":
+            status = watchdog_status
         else:
             status = "failed"
         append_status(args.status_csv, [
             candidate, mutation_type, suite, weather, attempt, started, ended,
-            proc.returncode, rows, target_rows, status, output_csv, log_path,
+            returncode, rows, target_rows, status, output_csv, log_path,
         ])
         print("[STATUS] {} {} status={} rows={}/{} exit={}".format(
-            candidate, suite, status, rows, target_rows, proc.returncode), flush=True)
+            candidate, suite, status, rows, target_rows, returncode), flush=True)
         if status == "done":
             open(output_csv + ".done", "a").close()
             return True
@@ -225,6 +316,8 @@ def main() -> int:
     ensure_status_header(args.status_csv)
     print("[CFG] target_rows={} tasks={} output_root={}".format(
         target_rows, len(tasks), args.output_root), flush=True)
+    print("[CFG] watchdog_interval={} idle_timeout={} carla_missing_timeout={}".format(
+        args.watchdog_interval, args.idle_timeout, args.carla_missing_timeout), flush=True)
     ok = True
     for idx, (row, suite) in enumerate(tasks):
         ok = run_task(row, suite, target_rows, args, idx) and ok
