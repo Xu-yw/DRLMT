@@ -8,6 +8,7 @@ set -euo pipefail
   --output-root /root/autodl-tmp/eval/results/phase5_main \
   --status-csv /root/autodl-tmp/eval/results/phase5_main/phase5_queue_status.csv \
   --suites sunny,rainy \
+  --candidates baseline_v2,mutant_StDisoP,mutant_AcRepR,mutant_ReRepP,mutant_PVDistR,mutant_StRepP,mutant_StDistP,mutant_StFuzS,mutant_AcFuzS,mutant_ReDistP \
   --limit 100 \
   --port 2002 \
   --max-attempts 20 \
