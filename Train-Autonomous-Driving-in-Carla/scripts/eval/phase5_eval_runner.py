@@ -4,7 +4,7 @@
 Phase 5 评估调度器。
 
 读取 Phase 5 manifest，按 candidate × suite 调用 evaluate_suite.py。
-调度器负责：CARLA 端口检查、断点续跑、任务状态 CSV、observer 开关、
+默认测试套件为 rainy/foggy。调度器负责：CARLA 端口检查、断点续跑、任务状态 CSV、observer 开关、
 失败后的有限重试。正式 100-case 和短 sanity 共用这一入口。
 """
 
@@ -32,6 +32,7 @@ DEFAULT_STATUS = "/root/autodl-tmp/eval/results/phase5_main/phase5_queue_status.
 SUITE_WEATHER = {
     "sunny": "ClearNoon",
     "rainy": "MidRainyNoon",
+    "foggy": "Custom_Foggy",
 }
 
 
@@ -41,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-cases", default=DEFAULT_CASES)
     parser.add_argument("--output-root", default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--status-csv", default=DEFAULT_STATUS)
-    parser.add_argument("--suites", default="sunny,rainy", help="comma list: sunny,rainy")
+    parser.add_argument("--suites", default="rainy,foggy", help="comma list: sunny,rainy,foggy")
     parser.add_argument("--candidates", default="", help="comma list from manifest; empty = all")
     parser.add_argument("--tasks", default="", help="comma list candidate:suite; overrides candidates/suites")
     parser.add_argument("--limit", type=int, default=0, help="0 = all cases; sanity can use 1/2")
