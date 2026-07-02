@@ -37,6 +37,10 @@ EXPECTED_WEATHER_BY_SUITE = {
     "rainy": "MidRainyNoon",
     "foggy": "Custom_Foggy",
 }
+SEVERE_REASONS = {"collision", "lane_deviation", "low_speed_timeout", "over_speed", "step_failure", "carla_crash"}
+NAV_COLS = ["throttle", "velocity_ratio", "prev_steer", "dist_center_ratio", "angle_ratio"]
+INFO_COLS = ["distance_covered_m", "center_lane_deviation_m"]
+ACTION_COLS = ["steer", "throttle_raw"]
 
 
 def parse_args():
@@ -62,6 +66,11 @@ def parse_args():
     p.add_argument("--observer-web-port", type=int, default=8090, help="observer HTTP port")
     p.add_argument("--observer-max-fps", type=float, default=10.0, help="observer stream FPS cap")
     p.add_argument("--observer-log", default="", help="observer log path; default is output CSV dir/observer.log")
+    p.add_argument("--trace-dir", default="", help="Optional directory for inline per-case trace .npz files")
+    p.add_argument("--trace-mode", choices=["failures", "all"], default="failures",
+                   help="Trace only candidate_fail cases or every evaluated case")
+    p.add_argument("--trace-min-progress", type=float, default=0.98,
+                   help="candidate_fail progress threshold used by trace-mode=failures")
     return p.parse_args()
 
 
@@ -84,6 +93,10 @@ def validate_suite_weather(args):
             "(pass --allow-weather-override only for an intentional ablation)"
             % (args.suite, expected, args.weather)
         )
+
+
+def candidate_fail(done_reason, progress_ratio, min_progress):
+    return done_reason in SEVERE_REASONS or progress_ratio < min_progress
 
 
 def _parse_raw_fail(value):
@@ -127,6 +140,94 @@ def open_output_csv(output_csv, fieldnames, resume):
         writer.writeheader()
         csv_f.flush()
     return csv_f, writer
+
+
+def trace_index_path(trace_dir):
+    return os.path.join(trace_dir, "_trace_index.csv")
+
+
+def trace_index_fieldnames():
+    return [
+        "candidate", "suite", "case_id", "weather", "mutation_type",
+        "spawn_idx", "heading_offset_deg", "done_reason", "raw_fail",
+        "progress_ratio", "total_steps", "total_reward", "trace_path",
+    ]
+
+
+def read_trace_index_keys(trace_dir):
+    keys = set()
+    path = trace_index_path(trace_dir)
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return keys
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            keys.add(str(row.get("case_id")))
+    return keys
+
+
+def ensure_trace_index(trace_dir):
+    os.makedirs(trace_dir, exist_ok=True)
+    path = trace_index_path(trace_dir)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return
+    with open(path, "w", newline="") as f:
+        csv.DictWriter(f, fieldnames=trace_index_fieldnames()).writeheader()
+
+
+def stack_trace_rows(rows, width):
+    if rows:
+        return np.asarray(rows, dtype=np.float32)
+    return np.zeros((0, width), dtype=np.float32)
+
+
+def write_case_trace(args, case, row, trace_data, trace_index_keys):
+    ensure_trace_index(args.trace_dir)
+    case_id = str(case["case_id"])
+    trace_path = os.path.join(
+        args.trace_dir,
+        "%s_%s_case%s.npz" % (args.candidate_name, args.suite, case_id),
+    )
+    np.savez_compressed(
+        trace_path,
+        nav=stack_trace_rows(trace_data.get("nav", []), len(NAV_COLS)),
+        info=stack_trace_rows(trace_data.get("info", []), len(INFO_COLS)),
+        action=stack_trace_rows(trace_data.get("action", []), len(ACTION_COLS)),
+        reward=np.asarray(trace_data.get("reward", []), dtype=np.float32),
+        nav_cols=np.asarray(NAV_COLS),
+        info_cols=np.asarray(INFO_COLS),
+        action_cols=np.asarray(ACTION_COLS),
+        candidate=args.candidate_name,
+        suite=args.suite,
+        weather=args.weather,
+        mutation_type=args.mutation_type,
+        done_reason=row["done_reason"],
+        progress=float(row["progress_ratio"]),
+        steps=int(row["total_steps"]),
+        total_reward=float(row["total_reward"]),
+        spawn_idx=int(case["spawn_idx"]),
+        heading_offset_deg=float(case["heading_offset_deg"]),
+    )
+    if case_id in trace_index_keys:
+        return trace_path
+    with open(trace_index_path(args.trace_dir), "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=trace_index_fieldnames())
+        writer.writerow({
+            "candidate": args.candidate_name,
+            "suite": args.suite,
+            "case_id": case_id,
+            "weather": args.weather,
+            "mutation_type": args.mutation_type,
+            "spawn_idx": case["spawn_idx"],
+            "heading_offset_deg": round(case["heading_offset_deg"], 4),
+            "done_reason": row["done_reason"],
+            "raw_fail": row["raw_fail"],
+            "progress_ratio": row["progress_ratio"],
+            "total_steps": row["total_steps"],
+            "total_reward": row["total_reward"],
+            "trace_path": trace_path,
+        })
+    trace_index_keys.add(case_id)
+    return trace_path
 
 
 def start_observer(args):
@@ -207,6 +308,14 @@ def main():
         print("[CFG] observer=http://" + args.observer_web_host + ":" + str(args.observer_web_port) + "/")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output_csv)), exist_ok=True)
+    trace_enabled = bool(args.trace_dir)
+    trace_index_keys = set()
+    if trace_enabled:
+        ensure_trace_index(args.trace_dir)
+        trace_index_keys = read_trace_index_keys(args.trace_dir)
+        print("[CFG] trace_dir=" + args.trace_dir +
+              " trace_mode=" + args.trace_mode +
+              " trace_min_progress=" + str(args.trace_min_progress))
 
     with open(args.test_cases) as f:
         cases = json.load(f)
@@ -269,7 +378,7 @@ def main():
 
             obs = env.reset()
             if obs is None:
-                writer.writerow({
+                result_row = {
                     "case_id": case["case_id"], "candidate": args.candidate_name,
                     "suite": args.suite, "weather": args.weather, "spawn_idx": case["spawn_idx"],
                     "heading_offset_deg": round(case["heading_offset_deg"], 4),
@@ -278,7 +387,10 @@ def main():
                     "progress_ratio": 0.0, "final_waypoint_idx": 0, "route_length": 0,
                     "wall_time_s": round(time.time() - t0, 2),
                     "mutation_type": args.mutation_type,
-                })
+                }
+                if trace_enabled:
+                    write_case_trace(args, case, result_row, {}, trace_index_keys)
+                writer.writerow(result_row)
                 csv_f.flush()
                 n_fail += 1
                 processed_new += 1
@@ -297,6 +409,7 @@ def main():
             done = False
             done_reason = "max_steps_reached"
             info = None
+            trace_data = {"nav": [], "info": [], "action": [], "reward": []}
 
             for step_i in range(args.max_steps):
                 action = agent.get_action(obs, step_i, total_reward, done, train=False, deterministic=True)
@@ -308,6 +421,11 @@ def main():
                 obs = encode.process(obs)
                 if torch.any(torch.isnan(obs)):
                     obs = torch.zeros_like(obs)
+                if trace_enabled:
+                    trace_data["nav"].append(np.asarray(env.navigation_obs, dtype=np.float32))
+                    trace_data["info"].append(np.asarray(info[:2] if info else [0.0, 0.0], dtype=np.float32))
+                    trace_data["action"].append(np.asarray(action, dtype=np.float32).reshape(-1))
+                    trace_data["reward"].append(float(reward))
                 total_reward += float(reward)
                 steps += 1
                 if done:
@@ -319,7 +437,7 @@ def main():
             raw_fail = 0 if done_reason == "route_completed" else 1
             progress_ratio = max(0.0, min(1.0, float(final_idx) / max(1, route_len - 1)))
 
-            writer.writerow({
+            result_row = {
                 "case_id": case["case_id"], "candidate": args.candidate_name,
                 "suite": args.suite, "weather": args.weather, "spawn_idx": case["spawn_idx"],
                 "heading_offset_deg": round(case["heading_offset_deg"], 4),
@@ -330,7 +448,12 @@ def main():
                 "final_waypoint_idx": final_idx, "route_length": route_len,
                 "wall_time_s": round(time.time() - t0, 2),
                 "mutation_type": args.mutation_type,
-            })
+            }
+            if trace_enabled and (
+                    args.trace_mode == "all" or
+                    candidate_fail(done_reason, progress_ratio, args.trace_min_progress)):
+                write_case_trace(args, case, result_row, trace_data, trace_index_keys)
+            writer.writerow(result_row)
             csv_f.flush()
 
             if raw_fail:

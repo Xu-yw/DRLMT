@@ -61,6 +61,10 @@ def parse_args() -> argparse.Namespace:
                         help="seconds without new CSV rows before restarting evaluation")
     parser.add_argument("--carla-missing-timeout", type=int, default=120,
                         help="seconds to wait after CARLA process disappears before restart")
+    parser.add_argument("--trace-root", default="",
+                        help="Optional root directory for evaluate_suite.py inline traces")
+    parser.add_argument("--trace-mode", choices=["failures", "all"], default="failures")
+    parser.add_argument("--trace-min-progress", type=float, default=0.98)
     return parser.parse_args()
 
 
@@ -237,6 +241,7 @@ def run_task(row: Dict[str, str], suite: str, target_rows: int, args: argparse.N
     os.makedirs(cand_dir, exist_ok=True)
     output_csv = os.path.join(cand_dir, "{}.csv".format(suite))
     log_path = os.path.join(cand_dir, "{}.log".format(suite))
+    trace_dir = os.path.join(args.trace_root, candidate, suite) if args.trace_root else ""
 
     if data_rows(output_csv) >= target_rows:
         append_status(args.status_csv, [
@@ -262,6 +267,12 @@ def run_task(row: Dict[str, str], suite: str, target_rows: int, args: argparse.N
             "--mutation-type", mutation_type,
             "--resume",
         ]
+        if trace_dir:
+            cmd.extend([
+                "--trace-dir", trace_dir,
+                "--trace-mode", args.trace_mode,
+                "--trace-min-progress", str(args.trace_min_progress),
+            ])
         if args.limit > 0:
             cmd.extend(["--limit", str(args.limit)])
         if args.observer:
